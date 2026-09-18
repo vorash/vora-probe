@@ -29,10 +29,11 @@ is a member of `gateway.AllowedActions`, with a metric from
 `gateway.AllowedMetrics`; anything else fails validation rather than being
 interpreted.
 
-Steps 1 and 2 run the whole loop in one process. The split is still real: the
-replay driver invokes the worker through the same serialized interface the
-controller will use, including the byte limits. That is why the offline suite is
-evidence about the protocol and not just about a mock.
+Replay runs the worker in this process; the live controller (`internal/probe`)
+runs the same binary inside a Vora sandbox and drives it one step at a time over
+the public exec API. Both are the same port — `probe.StepRunner` — so the loop
+cannot tell where a step ran, and the offline suite is evidence about the
+protocol rather than about a mock.
 
 ## Step protocol
 
@@ -62,6 +63,32 @@ silently treated as complete.
 `counters` carries the ID sequences. A worker is invoked fresh for every
 transition, so without them the second observation of a run would be numbered
 `OBS-0001` again.
+
+## Live controller leg
+
+The controller creates one sandbox per attempt — `NETWORK_NONE`, bounded
+resources, and a TTL longer than the run's own wall-clock budget so the
+controller reaps it rather than a TTL expiring mid-step. Every step is a
+fixed-command exec with the bounded envelope on stdin and exactly one result line
+on stdout. The sandbox is destroyed on every exit path, including the failure
+paths, and its whole life is journaled as `sandbox` events between `run_started`
+and `run_finished`.
+
+Exit handling is the subtle part, and it is why the leg exists. protojson omits
+fields holding their default value, so a **successful** execution arrives as
+`{"exit":{"reason":"EXITED"}}` with no `exitCode` at all. An execution whose
+exit chunk never arrives is a different thing — the run was interrupted — and
+`probe.ErrInterrupted` makes the two impossible to conflate. Oversized, malformed
+or multi-line output is refused rather than trimmed into shape.
+
+The worker measures the wall-clock budget against `Run.Used.StartedAt` using its
+own clock, so a live run uses the wall clock while replay keeps its frozen,
+synthetic one. A frozen start older than the budget would otherwise read as
+exhausted on the first step.
+
+The released worker image is distroless and has no shell on purpose. Vora's gVisor
+backend starts every sandbox with `/bin/sh -c 'sleep 86400'`, which such an image
+cannot satisfy, so a distroless worker must run on the `bwrap` backend.
 
 ## Determinism
 
@@ -139,7 +166,9 @@ Ground truth never enters the planner or the evaluator. It lives in
   the writer and continued on reopen. Requests are journaled *before* execution
   and results before the next step, so an interrupted run reads as an unanswered
   request rather than as a success. A torn final line is tolerated on reopen,
-  because that is exactly what an interruption leaves behind.
+  because that is exactly what an interruption leaves behind. A live run also
+  records `sandbox` created/destroyed events, which correlate the run with the
+  sandbox it ran in.
 - `report.json`, `report.md` — the report in machine and human form.
 - One investigation at a time, enforced by a `flock` on `<out>/probe.lock`, which
   the kernel releases even if the process dies.
@@ -287,6 +316,14 @@ go run ./cmd/vora-probe replay test/fixtures/oom/oom-positive --out .probe
 go run ./cmd/vora-probe replay test/fixtures/oom/oom-positive --evaluator jev
 go run ./cmd/vora-probe evaluate --out .probe/evaluation --loop
 go run ./cmd/vora-probe verify
+```
+
+The live controller leg is validated separately, against a live vora-api and the
+released worker image (see `internal/probe/live_integration_test.go` for the
+tunnel and environment it expects):
+
+```bash
+go test -tags=integration ./internal/probe/ -run TestLiveInvestigation
 ```
 
 `cmd/vora-probe-worker` is the fixed worker binary: one serialized

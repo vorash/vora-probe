@@ -1,11 +1,10 @@
-// Package probe wires the offline vertical slice together: a frozen fixture, the
-// recorded planner, the fixture gateway, the bounded step worker and the
-// journal.
+// Package probe wires an investigation together: the ports it reads through,
+// the bounded step worker and the journal.
 //
 // Nothing in this package is special-cased for replay. The loop is the same loop
-// that will run against a live gateway; only the two ports differ. That is the
-// property worth having, because it is what makes the offline result evidence
-// about the engine rather than about a mock.
+// that runs against a live gateway and a sandboxed worker; only the ports
+// differ. That is the property worth having, because it is what makes the
+// offline result evidence about the engine rather than about a mock.
 package probe
 
 import (
@@ -24,6 +23,19 @@ import (
 	"github.com/vorash/vora-probe/worker"
 )
 
+// StepRunner executes one worker step: a bounded state envelope in, exactly one
+// result line out. Replay runs the worker in-process, the live controller runs
+// the same binary inside a network-denied sandbox, and the loop cannot tell the
+// difference. Swapping this port is the whole of step 4.
+type StepRunner func(ctx context.Context, input []byte) ([]byte, error)
+
+// inProcessRunner runs the worker in the controller's own address space.
+func inProcessRunner(engine *investigation.Engine, budget investigation.Budgets) StepRunner {
+	return func(_ context.Context, input []byte) ([]byte, error) {
+		return worker.Step(engine, input, budget.MaxEnvelopeBytes, budget.MaxResponseBytes)
+	}
+}
+
 type ReplayOptions struct {
 	BundleDir string
 	// OutDir holds the journal and artifacts. It is owner-readable and ignored
@@ -33,6 +45,9 @@ type ReplayOptions struct {
 	Budget   investigation.Budgets
 	Engine   *investigation.Engine
 	MaxSteps int
+	// Runner overrides where a step runs. Nil means in-process, which is what
+	// replay has always done; the live controller injects a sandboxed runner.
+	Runner StepRunner
 	// OnEnvelope is a test/debug hook: it is called with the state envelope
 	// before every step.
 	OnEnvelope func(investigation.StepEnvelope)
@@ -86,18 +101,14 @@ func Replay(ctx context.Context, opts ReplayOptions) (ReplayResult, error) {
 		engine = &investigation.Engine{Policy: gateway.DefaultPolicy(), Claims: investigation.DefaultClaimPolicy()}
 	}
 
-	bundle, err := fixtures.Load(opts.BundleDir)
+	bundle, err := loadBundle(opts.BundleDir)
 	if err != nil {
 		return ReplayResult{}, err
 	}
-	if err := fixtures.Verify(bundle); err != nil {
-		return ReplayResult{}, fmt.Errorf("%s: %w", opts.BundleDir, err)
-	}
-
+	// Replay freezes time so two runs are byte-identical. A live run must not;
+	// see wallClock in live.go.
 	clock := newClock(latestRetrieval(bundle))
-	engine.Now = clock.now
-	planner := models.NewRecordedPlanner(plannerTurns(bundle))
-	gw, err := gateway.NewFixtureGateway(engine.Policy, bundle.Evidence, clock.now)
+	planner, gw, err := openScenario(engine, bundle, clock.now)
 	if err != nil {
 		return ReplayResult{}, err
 	}
@@ -116,43 +127,161 @@ func Replay(ctx context.Context, opts ReplayOptions) (ReplayResult, error) {
 	}
 	defer journal.Close()
 
-	run := investigation.Run{
-		SchemaVersion: gateway.SchemaVersion,
-		ID:            runID,
-		IncidentID:    bundle.Incident.ID,
-		Attempt:       opts.Attempt,
-		StartedAt:     clock.now(),
-		Status:        investigation.RunActive,
-		Budgets:       budget,
-		Used:          investigation.BudgetState{StartedAt: clock.now()},
+	runner := opts.Runner
+	if runner == nil {
+		runner = inProcessRunner(engine, budget)
 	}
-	if err := journal.Append(store.Event{
-		RunID: runID, IncidentID: bundle.Incident.ID, Kind: store.EventRunStarted,
-		At: run.StartedAt, Payload: mustJSON(bundle.Incident),
-	}); err != nil {
+
+	res, err := runLoop(ctx, runConfig{
+		engine:     engine,
+		planner:    planner,
+		gateway:    gw,
+		journal:    journal,
+		now:        clock.now,
+		budget:     budget,
+		attempt:    opts.Attempt,
+		runID:      runID,
+		runDir:     runDir,
+		incident:   bundle.Incident,
+		maxSteps:   opts.MaxSteps,
+		runner:     runner,
+		onEnvelope: opts.OnEnvelope,
+	})
+	if err != nil {
 		return ReplayResult{}, err
 	}
 
+	return ReplayResult{
+		Report:             res.report,
+		JournalPath:        journal.Path(),
+		ReportJSONPath:     res.reportJSONPath,
+		ReportMarkdownPath: res.reportMarkdownPath,
+		PlannerTurns:       planner.Consumed(),
+		InfraCalls:         gw.Executed(),
+		Steps:              res.steps,
+	}, nil
+}
+
+// loadBundle loads and verifies a fixture bundle. Verification is not optional:
+// a corrupted fixture would produce a plausible report about evidence that never
+// existed.
+func loadBundle(dir string) (fixtures.Bundle, error) {
+	bundle, err := fixtures.Load(dir)
+	if err != nil {
+		return fixtures.Bundle{}, err
+	}
+	if err := fixtures.Verify(bundle); err != nil {
+		return fixtures.Bundle{}, fmt.Errorf("%s: %w", dir, err)
+	}
+	return bundle, nil
+}
+
+// openScenario builds the offline ports from a verified bundle: the recorded
+// planner, the fixture gateway and the run's time source. The live controller
+// uses the same ports, because step 4 tests the transport and not the lab.
+func openScenario(engine *investigation.Engine, bundle fixtures.Bundle, now func() time.Time) (*models.RecordedPlanner, *gateway.FixtureGateway, error) {
+	engine.Now = now
+	planner := models.NewRecordedPlanner(plannerTurns(bundle))
+	gw, err := gateway.NewFixtureGateway(engine.Policy, bundle.Evidence, now)
+	if err != nil {
+		return nil, nil, err
+	}
+	return planner, gw, nil
+}
+
+// runConfig is everything the shared loop needs. Everything that differs between
+// replay and a live run is a port or a hook here.
+type runConfig struct {
+	engine     *investigation.Engine
+	planner    models.Planner
+	gateway    *gateway.FixtureGateway
+	journal    *store.Journal
+	now        func() time.Time
+	budget     investigation.Budgets
+	attempt    int
+	runID      string
+	runDir     string
+	incident   investigation.Incident
+	maxSteps   int
+	runner     StepRunner
+	onEnvelope func(investigation.StepEnvelope)
+	// onCreate and onDestroy bracket an external resource around the steps. The
+	// live controller creates its sandbox in onCreate and destroys it in
+	// onDestroy, so the sandbox's whole life is journaled between run_started
+	// and run_finished — the same bracket replay has always had.
+	onCreate  func(ctx context.Context) (StepRunner, error)
+	onDestroy func(ctx context.Context)
+}
+
+type loopResult struct {
+	report             investigation.Report
+	steps              int
+	reportJSONPath     string
+	reportMarkdownPath string
+}
+
+// runLoop is the investigation itself, independent of where the worker runs.
+func runLoop(ctx context.Context, cfg runConfig) (loopResult, error) {
+	run := investigation.Run{
+		SchemaVersion: gateway.SchemaVersion,
+		ID:            cfg.runID,
+		IncidentID:    cfg.incident.ID,
+		Attempt:       cfg.attempt,
+		StartedAt:     cfg.now(),
+		Status:        investigation.RunActive,
+		Budgets:       cfg.budget,
+		Used:          investigation.BudgetState{StartedAt: cfg.now()},
+	}
+	if err := cfg.journal.Append(store.Event{
+		RunID: cfg.runID, IncidentID: cfg.incident.ID, Kind: store.EventRunStarted,
+		At: run.StartedAt, Payload: mustJSON(cfg.incident),
+	}); err != nil {
+		return loopResult{}, err
+	}
+
+	runner := cfg.runner
+	if cfg.onCreate != nil {
+		var err error
+		runner, err = cfg.onCreate(ctx)
+		if err != nil {
+			return loopResult{}, err
+		}
+	}
+	// Teardown must survive a cancelled context: if the run is abandoned, the
+	// sandbox still has to go away, or the next attempt inherits a leak.
+	destroyCtx := context.WithoutCancel(ctx)
+	destroyed := false
+	destroy := func() {
+		if destroyed || cfg.onDestroy == nil {
+			return
+		}
+		destroyed = true
+		cfg.onDestroy(destroyCtx)
+	}
+	// A write to the journal can fail at any point below; reap the resource
+	// regardless, including on paths that never reach run_finished.
+	defer destroy()
+
 	env := investigation.StepEnvelope{
 		SchemaVersion: gateway.SchemaVersion,
-		Incident:      bundle.Incident,
+		Incident:      cfg.incident,
 		Run:           run,
 	}
 
-	maxSteps := opts.MaxSteps
+	maxSteps := cfg.maxSteps
 	if maxSteps == 0 {
-		maxSteps = budget.MaxSteps * 2
+		maxSteps = cfg.budget.MaxSteps * 2
 	}
 	var final investigation.StepResult
 	var pending *investigation.Pending
 	finished := false
 	for step := 0; step < maxSteps; step++ {
-		if opts.OnEnvelope != nil {
-			opts.OnEnvelope(env)
+		if cfg.onEnvelope != nil {
+			cfg.onEnvelope(env)
 		}
-		result, next, err := stepOnce(engine, ctx, planner, gw, journal, env, pending, runID, budget, clock)
+		result, next, err := stepOnce(ctx, cfg, runner, env, pending)
 		if err != nil {
-			return ReplayResult{}, err
+			return loopResult{}, err
 		}
 		env, pending = next, result.Pending
 		if result.Result.Kind == investigation.ResultFinal {
@@ -162,40 +291,42 @@ func Replay(ctx context.Context, opts ReplayOptions) (ReplayResult, error) {
 		}
 	}
 	if !finished {
-		return ReplayResult{}, fmt.Errorf("investigation did not terminate within %d steps", maxSteps)
+		return loopResult{}, fmt.Errorf("investigation did not terminate within %d steps", maxSteps)
 	}
 	if final.Report == nil {
-		return ReplayResult{}, fmt.Errorf("run %s ended as %s without a report: %s", runID, final.Run.Status, final.Reason)
+		return loopResult{}, fmt.Errorf("run %s ended as %s without a report: %s", cfg.runID, final.Run.Status, final.Reason)
 	}
 
-	if err := journal.Append(store.Event{
-		RunID: runID, IncidentID: bundle.Incident.ID, Kind: store.EventRunFinished,
-		At: clock.now(), Payload: mustJSON(final.Run),
+	// Reap the sandbox before declaring the run finished: run_finished is the
+	// last word on the run, and a resource still alive after it would contradict
+	// that.
+	destroy()
+
+	if err := cfg.journal.Append(store.Event{
+		RunID: cfg.runID, IncidentID: cfg.incident.ID, Kind: store.EventRunFinished,
+		At: cfg.now(), Payload: mustJSON(final.Run),
 	}); err != nil {
-		return ReplayResult{}, err
+		return loopResult{}, err
 	}
 
 	raw, err := json.MarshalIndent(final.Report, "", "  ")
 	if err != nil {
-		return ReplayResult{}, err
+		return loopResult{}, err
 	}
-	jsonPath, err := store.WriteArtifact(runDir, "report.json", append(raw, '\n'))
+	jsonPath, err := store.WriteArtifact(cfg.runDir, "report.json", append(raw, '\n'))
 	if err != nil {
-		return ReplayResult{}, err
+		return loopResult{}, err
 	}
-	mdPath, err := store.WriteArtifact(runDir, "report.md", []byte(final.Report.Markdown()))
+	mdPath, err := store.WriteArtifact(cfg.runDir, "report.md", []byte(final.Report.Markdown()))
 	if err != nil {
-		return ReplayResult{}, err
+		return loopResult{}, err
 	}
 
-	return ReplayResult{
-		Report:             *final.Report,
-		JournalPath:        journal.Path(),
-		ReportJSONPath:     jsonPath,
-		ReportMarkdownPath: mdPath,
-		PlannerTurns:       planner.Consumed(),
-		InfraCalls:         gw.Executed(),
-		Steps:              final.Step,
+	return loopResult{
+		report:             *final.Report,
+		steps:              final.Step,
+		reportJSONPath:     jsonPath,
+		reportMarkdownPath: mdPath,
 	}, nil
 }
 
@@ -204,22 +335,17 @@ func Replay(ctx context.Context, opts ReplayOptions) (ReplayResult, error) {
 // before they are executed, which is what makes an interruption distinguishable
 // from a success.
 func stepOnce(
-	engine *investigation.Engine,
 	ctx context.Context,
-	planner models.Planner,
-	gw *gateway.FixtureGateway,
-	journal *store.Journal,
+	cfg runConfig,
+	runner StepRunner,
 	env investigation.StepEnvelope,
 	pending *investigation.Pending,
-	runID string,
-	budget investigation.Budgets,
-	clock *clock,
 ) (stepOutcome, investigation.StepEnvelope, error) {
 	input, err := json.Marshal(investigation.WorkerInput{State: env, Pending: pending})
 	if err != nil {
 		return stepOutcome{}, env, err
 	}
-	out, err := worker.Step(engine, input, budget.MaxEnvelopeBytes, budget.MaxResponseBytes)
+	out, err := runner(ctx, input)
 	if err != nil {
 		return stepOutcome{}, env, err
 	}
@@ -234,7 +360,7 @@ func stepOnce(
 		call := investigation.Call{
 			SchemaVersion: gateway.SchemaVersion,
 			ID:            nextCallID(&env),
-			RunID:         runID,
+			RunID:         cfg.runID,
 			IncidentID:    env.Incident.ID,
 			Step:          result.Step,
 			Kind:          investigation.CallModel,
@@ -242,13 +368,13 @@ func stepOnce(
 			RequestDigest: gateway.Digest(mustJSON(result.ModelRequest)),
 			Status:        investigation.CallOK,
 		}
-		if err := journal.Append(store.Event{
-			RunID: runID, IncidentID: env.Incident.ID, Step: result.Step, Kind: store.EventRequest,
-			At: clock.now(), Target: call.Target, Payload: mustJSON(result.ModelRequest),
+		if err := cfg.journal.Append(store.Event{
+			RunID: cfg.runID, IncidentID: env.Incident.ID, Step: result.Step, Kind: store.EventRequest,
+			At: cfg.now(), Target: call.Target, Payload: mustJSON(result.ModelRequest),
 		}); err != nil {
 			return stepOutcome{}, env, err
 		}
-		response, err := planner.Plan(ctx, *result.ModelRequest)
+		response, err := cfg.planner.Plan(ctx, *result.ModelRequest)
 		switch {
 		case errors.Is(err, models.ErrExhausted):
 			// A fixture that runs out of planning is a fixture bug, not a stop
@@ -268,9 +394,9 @@ func stepOnce(
 			call.Bytes = len(raw)
 			call.ResponseDigest = gateway.Digest(raw)
 		}
-		if err := journal.Append(store.Event{
-			RunID: runID, IncidentID: env.Incident.ID, Step: result.Step, Kind: store.EventResult,
-			At: clock.now(), Target: call.Target, Payload: mustJSON(response),
+		if err := cfg.journal.Append(store.Event{
+			RunID: cfg.runID, IncidentID: env.Incident.ID, Step: result.Step, Kind: store.EventResult,
+			At: cfg.now(), Target: call.Target, Payload: mustJSON(response),
 		}); err != nil {
 			return stepOutcome{}, env, err
 		}
@@ -282,7 +408,7 @@ func stepOnce(
 		call := investigation.Call{
 			SchemaVersion: gateway.SchemaVersion,
 			ID:            nextCallID(&env),
-			RunID:         runID,
+			RunID:         cfg.runID,
 			IncidentID:    env.Incident.ID,
 			Step:          result.Step,
 			Kind:          investigation.CallInfra,
@@ -290,13 +416,13 @@ func stepOnce(
 			RequestDigest: gateway.Digest(mustJSON(action)),
 			Status:        investigation.CallOK,
 		}
-		if err := journal.Append(store.Event{
-			RunID: runID, IncidentID: env.Incident.ID, Step: result.Step, Kind: store.EventRequest,
-			At: clock.now(), Target: call.Target, Payload: mustJSON(action),
+		if err := cfg.journal.Append(store.Event{
+			RunID: cfg.runID, IncidentID: env.Incident.ID, Step: result.Step, Kind: store.EventRequest,
+			At: cfg.now(), Target: call.Target, Payload: mustJSON(action),
 		}); err != nil {
 			return stepOutcome{}, env, err
 		}
-		response, err := gw.Execute(action)
+		response, err := cfg.gateway.Execute(action)
 		if err != nil {
 			call.Status = investigation.CallDenied
 			call.Reason = err.Error()
@@ -309,9 +435,9 @@ func stepOnce(
 		}
 		call.Bytes = len(raw)
 		call.ResponseDigest = gateway.Digest(raw)
-		if err := journal.Append(store.Event{
-			RunID: runID, IncidentID: env.Incident.ID, Step: result.Step, Kind: store.EventResult,
-			At: clock.now(), Target: call.Target, Payload: raw,
+		if err := cfg.journal.Append(store.Event{
+			RunID: cfg.runID, IncidentID: env.Incident.ID, Step: result.Step, Kind: store.EventResult,
+			At: cfg.now(), Target: call.Target, Payload: raw,
 		}); err != nil {
 			return stepOutcome{}, env, err
 		}
