@@ -258,6 +258,25 @@ statistical significance, and confidence scores are never presented as the
 probability that a root cause is correct. Jev is not required to win; a
 comparison that shows it does not help is a result.
 
+## Public surface
+
+The layout is a contract, not a convenience:
+
+| Path | Status |
+| --- | --- |
+| `gateway/`, `investigation/`, `models/`, `evaluation/`, `worker/`, `fixtures/` | importable, supported |
+| `internal/store/`, `internal/probe/` | private, may change at any time |
+| `cmd/` | command packages, not importable |
+
+`test/layout` enforces both halves: a library package outside `internal/` may not
+import `internal/`, and the list of expected public packages is pinned so renaming
+one fails the build rather than someone else's. Command packages are exempt —
+nobody imports a `main`, and the CLI legitimately drives the internals.
+
+The fixture *loader* is public while the fixture *data* stays under
+`test/fixtures/`: consumers pass an explicit path, and `fixtures.Root()` is an
+in-repo convenience only.
+
 ## Commands
 
 ```bash

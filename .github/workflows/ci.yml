@@ -1,0 +1,26 @@
+name: ci
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: make check
+      # The layout guard runs as part of make check; naming it here as well makes
+      # a broken public surface obvious in the job list rather than buried in
+      # test output.
+      - run: go test ./test/layout/ -v
+      # No endpoints are set, so the model arms report as blocked. A run that
+      # fails here means the offline path broke, not that a model was unavailable.
+      - run: go run ./cmd/vora-probe evaluate --out /tmp/evaluation --repeats 3

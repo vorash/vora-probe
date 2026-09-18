@@ -42,6 +42,42 @@ operator-supplied infrastructure.
 
 Go 1.25 or newer. No third-party dependencies.
 
+## Using it as a module
+
+The domain is importable. Everything outside `internal/` is a supported surface,
+and the layout guard in `test/layout` refuses a build where a public package
+reaches into a private one.
+
+```
+github.com/vorash/vora-probe
+├── gateway/         the infrastructure contract: closed action and metric
+│                    allowlists, typed payloads, policy, redaction
+├── investigation/   records, claims policy, calc/v1 derivations, the step
+│                    engine, evidence relations, the RelationEvaluator port
+├── models/          planner and evaluator clients (OpenAI-compatible baseline,
+│                    Jev, recorded)
+├── evaluation/      the comparison harness: fixed-input suite, repeats,
+│                    confusion counts, whole-loop runner
+├── worker/          the bounded step protocol
+├── fixtures/        loader and integrity checks for fixture bundles
+└── internal/        store and the replay driver, private by construction
+```
+
+```go
+import (
+	"github.com/vorash/vora-probe/gateway"
+	"github.com/vorash/vora-probe/investigation"
+)
+```
+
+Tags are `v0.x`: the surface is intended to be stable but is not yet frozen, and
+a breaking change will be a minor bump while the module is pre-1.0.
+
+Tagged releases also carry prebuilt `linux/amd64` and `linux/arm64` archives for
+`vora-probe` and `vora-probe-worker`, with a `checksums.txt`, plus the worker
+image on `ghcr.io/vorash/vora-probe-worker`. Reference the image **by digest**;
+the release notes print it.
+
 ## Try it
 
 ```bash
@@ -71,6 +107,15 @@ The four fixtures pin that, and each one fails a specific overclaim:
 | `misleading-deployment-correlation` | A rollout inside the proximity bound with flat memory and unchanged query volume ends inconclusive. Proximity is not causation. |
 | `missing-telemetry` | Restarts are evidenced and the terminating cause is not; the report stays inconclusive and publishes its coverage gaps. |
 | `non-oom-restart` | A probe-driven restart with memory far below the limit is never reported as an out-of-memory incident. |
+
+## Development
+
+```bash
+make check      # gofmt check, vet, tests — all offline
+make build      # bin/vora-probe and bin/vora-probe-worker
+make release    # cross-compiled archives + checksums into dist/
+make evaluate   # the evaluator comparison
+```
 
 ## Documentation
 

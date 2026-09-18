@@ -10,9 +10,9 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/vorash/vora-probe/internal/gateway"
-	"github.com/vorash/vora-probe/internal/investigation"
-	"github.com/vorash/vora-probe/internal/worker"
+	"github.com/vorash/vora-probe/gateway"
+	"github.com/vorash/vora-probe/investigation"
+	"github.com/vorash/vora-probe/worker"
 )
 
 func main() {

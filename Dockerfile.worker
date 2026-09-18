@@ -1,0 +1,29 @@
+# Immutable worker image.
+#
+# The worker is started by the Vora controller inside a sandbox with no network,
+# so the image carries nothing but the binary and a working directory. There is
+# deliberately no shell: the controller invokes a fixed command and passes a
+# bounded state envelope, and an image without a shell cannot be talked into
+# anything else.
+#
+# Released images are published to ghcr.io/vorash/vora-probe-worker and should be
+# referenced by digest, never by tag.
+
+FROM golang:1.25-alpine AS build
+
+WORKDIR /src
+COPY go.mod ./
+COPY . .
+RUN CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" \
+        -o /out/vora-probe-worker ./cmd/vora-probe-worker \
+ && mkdir -p /out/workspace
+
+FROM gcr.io/distroless/static-debian12:nonroot
+
+COPY --from=build /out/vora-probe-worker /usr/local/bin/vora-probe-worker
+COPY --from=build --chown=nonroot:nonroot /out/workspace /workspace
+
+USER nonroot
+WORKDIR /workspace
+
+ENTRYPOINT ["/usr/local/bin/vora-probe-worker"]

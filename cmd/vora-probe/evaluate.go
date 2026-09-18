@@ -10,10 +10,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/vorash/vora-probe/internal/evaluation"
-	"github.com/vorash/vora-probe/internal/models"
+	"github.com/vorash/vora-probe/evaluation"
+	"github.com/vorash/vora-probe/fixtures"
+	"github.com/vorash/vora-probe/internal/probe"
 	"github.com/vorash/vora-probe/internal/store"
-	"github.com/vorash/vora-probe/test/fixtures"
+	"github.com/vorash/vora-probe/models"
 )
 
 // evaluate compares evidence-relation evaluators.
@@ -81,6 +82,7 @@ func evaluate(args []string) error {
 			Arms:        set.Arms,
 			Repeat:      *repeats,
 			OutDir:      filepath.Join(*out, "loop"),
+			Replay:      probe.ReplayWithArm,
 		})
 		if err != nil {
 			return err

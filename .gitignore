@@ -1,5 +1,6 @@
 # Build output
 /bin/
+/dist/
 /vora-probe
 /vora-probe-worker
 
