@@ -108,7 +108,8 @@ func Replay(ctx context.Context, opts ReplayOptions) (ReplayResult, error) {
 	// Replay freezes time so two runs are byte-identical. A live run must not;
 	// see wallClock in live.go.
 	clock := newClock(latestRetrieval(bundle))
-	planner, gw, err := openScenario(engine, bundle, clock.now)
+	planner := openPlanner(engine, bundle, clock.now)
+	gw, err := openFixtureGateway(engine, bundle, clock.now)
 	if err != nil {
 		return ReplayResult{}, err
 	}
@@ -176,17 +177,17 @@ func loadBundle(dir string) (fixtures.Bundle, error) {
 	return bundle, nil
 }
 
-// openScenario builds the offline ports from a verified bundle: the recorded
-// planner, the fixture gateway and the run's time source. The live controller
-// uses the same ports, because step 4 tests the transport and not the lab.
-func openScenario(engine *investigation.Engine, bundle fixtures.Bundle, now func() time.Time) (*models.RecordedPlanner, *gateway.FixtureGateway, error) {
+// openPlanner builds the recorded planner and anchors the engine's clock. It is
+// the same planner for replay and for a live run: step 4 proves the transport,
+// and step 6 swaps the gateway without touching planning.
+func openPlanner(engine *investigation.Engine, bundle fixtures.Bundle, now func() time.Time) *models.RecordedPlanner {
 	engine.Now = now
-	planner := models.NewRecordedPlanner(plannerTurns(bundle))
-	gw, err := gateway.NewFixtureGateway(engine.Policy, bundle.Evidence, now)
-	if err != nil {
-		return nil, nil, err
-	}
-	return planner, gw, nil
+	return models.NewRecordedPlanner(plannerTurns(bundle))
+}
+
+// openFixtureGateway builds the offline evidence port from a verified bundle.
+func openFixtureGateway(engine *investigation.Engine, bundle fixtures.Bundle, now func() time.Time) (*gateway.FixtureGateway, error) {
+	return gateway.NewFixtureGateway(engine.Policy, bundle.Evidence, now)
 }
 
 // runConfig is everything the shared loop needs. Everything that differs between
@@ -194,7 +195,7 @@ func openScenario(engine *investigation.Engine, bundle fixtures.Bundle, now func
 type runConfig struct {
 	engine     *investigation.Engine
 	planner    models.Planner
-	gateway    *gateway.FixtureGateway
+	gateway    gateway.Gateway
 	journal    *store.Journal
 	now        func() time.Time
 	budget     investigation.Budgets

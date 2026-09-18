@@ -190,6 +190,10 @@ type LiveOptions struct {
 	TTLSeconds  int64
 	StepTimeout time.Duration
 	OnEnvelope  func(investigation.StepEnvelope)
+	// Gateway overrides where evidence comes from. Nil means the frozen fixture,
+	// which is what step 4 validated; a live investigation injects the lab
+	// adapter and reads the same port.
+	Gateway gateway.Gateway
 }
 
 type LiveResult struct {
@@ -229,9 +233,16 @@ func Investigate(ctx context.Context, opts LiveOptions) (LiveResult, error) {
 		return LiveResult{}, err
 	}
 	now := wallClock
-	planner, gw, err := openScenario(engine, bundle, now)
-	if err != nil {
-		return LiveResult{}, err
+	planner := openPlanner(engine, bundle, now)
+	// Evidence comes from the fixture unless a live adapter is supplied. The
+	// planner is the recorded one either way; swapping the gateway is step 6.
+	gw := opts.Gateway
+	if gw == nil {
+		fixture, err := openFixtureGateway(engine, bundle, now)
+		if err != nil {
+			return LiveResult{}, err
+		}
+		gw = fixture
 	}
 	lock, err := store.AcquireLock(opts.OutDir, "probe")
 	if err != nil {
