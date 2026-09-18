@@ -16,12 +16,12 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/vorash/vora-probe/internal/gateway"
-	"github.com/vorash/vora-probe/internal/investigation"
-	"github.com/vorash/vora-probe/internal/models"
+	"github.com/vorash/vora-probe/fixtures"
+	"github.com/vorash/vora-probe/gateway"
 	"github.com/vorash/vora-probe/internal/store"
-	"github.com/vorash/vora-probe/internal/worker"
-	"github.com/vorash/vora-probe/test/fixtures"
+	"github.com/vorash/vora-probe/investigation"
+	"github.com/vorash/vora-probe/models"
+	"github.com/vorash/vora-probe/worker"
 )
 
 type ReplayOptions struct {
@@ -46,6 +46,27 @@ type ReplayResult struct {
 	PlannerTurns       int
 	InfraCalls         int
 	Steps              int
+}
+
+// ReplayWithArm runs one investigation with a specific evidence-relation arm and
+// returns the report. It is the adapter the comparison harness is given, so that
+// the harness itself does not depend on how an investigation is executed.
+func ReplayWithArm(ctx context.Context, bundleDir string, arm investigation.RelationEvaluator, outDir string, attempt int, budget investigation.Budgets) (investigation.Report, error) {
+	result, err := Replay(ctx, ReplayOptions{
+		BundleDir: bundleDir,
+		OutDir:    outDir,
+		Attempt:   attempt,
+		Budget:    budget,
+		Engine: &investigation.Engine{
+			Policy:    gateway.DefaultPolicy(),
+			Claims:    investigation.DefaultClaimPolicy(),
+			Relations: arm,
+		},
+	})
+	if err != nil {
+		return investigation.Report{}, err
+	}
+	return result.Report, nil
 }
 
 // Replay runs one investigation to completion against a frozen fixture.

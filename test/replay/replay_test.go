@@ -13,10 +13,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/vorash/vora-probe/internal/investigation"
+	"github.com/vorash/vora-probe/fixtures"
 	"github.com/vorash/vora-probe/internal/probe"
 	"github.com/vorash/vora-probe/internal/store"
-	"github.com/vorash/vora-probe/test/fixtures"
+	"github.com/vorash/vora-probe/investigation"
 )
 
 func cases(t *testing.T) []string {

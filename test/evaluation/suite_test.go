@@ -14,10 +14,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/vorash/vora-probe/internal/evaluation"
-	"github.com/vorash/vora-probe/internal/investigation"
-	"github.com/vorash/vora-probe/internal/models"
-	"github.com/vorash/vora-probe/test/fixtures"
+	"github.com/vorash/vora-probe/evaluation"
+	"github.com/vorash/vora-probe/fixtures"
+	"github.com/vorash/vora-probe/internal/probe"
+	"github.com/vorash/vora-probe/investigation"
+	"github.com/vorash/vora-probe/models"
 )
 
 func relationsRoot(t *testing.T) string {
@@ -141,6 +142,7 @@ func TestWholeLoopComparisonMatchesGroundTruth(t *testing.T) {
 		Arms:        []evaluation.Arm{deterministic},
 		Repeat:      2,
 		OutDir:      t.TempDir(),
+		Replay:      probe.ReplayWithArm,
 	})
 	if err != nil {
 		t.Fatalf("run loop: %v", err)

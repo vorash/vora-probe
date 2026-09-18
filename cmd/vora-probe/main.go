@@ -17,11 +17,11 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/vorash/vora-probe/internal/gateway"
-	"github.com/vorash/vora-probe/internal/investigation"
-	"github.com/vorash/vora-probe/internal/models"
+	"github.com/vorash/vora-probe/fixtures"
+	"github.com/vorash/vora-probe/gateway"
 	"github.com/vorash/vora-probe/internal/probe"
-	"github.com/vorash/vora-probe/test/fixtures"
+	"github.com/vorash/vora-probe/investigation"
+	"github.com/vorash/vora-probe/models"
 )
 
 const usage = `vora-probe investigates a service read-only and explains what it found.
