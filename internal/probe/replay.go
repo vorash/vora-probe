@@ -33,6 +33,9 @@ type ReplayOptions struct {
 	Budget   investigation.Budgets
 	Engine   *investigation.Engine
 	MaxSteps int
+	// OnEnvelope is a test/debug hook: it is called with the state envelope
+	// before every step.
+	OnEnvelope func(investigation.StepEnvelope)
 }
 
 type ReplayResult struct {
@@ -123,6 +126,9 @@ func Replay(ctx context.Context, opts ReplayOptions) (ReplayResult, error) {
 	var pending *investigation.Pending
 	finished := false
 	for step := 0; step < maxSteps; step++ {
+		if opts.OnEnvelope != nil {
+			opts.OnEnvelope(env)
+		}
 		result, next, err := stepOnce(engine, ctx, planner, gw, journal, env, pending, runID, budget, clock)
 		if err != nil {
 			return ReplayResult{}, err

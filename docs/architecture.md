@@ -146,7 +146,99 @@ Ground truth never enters the planner or the evaluator. It lives in
 - Artifacts are owner-readable (`0600`), live artifacts are git-ignored, and the
   fixtures under version control remain the source of truth.
 
-## Reading a benchmark
+## The evaluator port
+
+Three arms can label evidence: the deterministic rules, a baseline LLM, and Jev.
+They implement one interface (`investigation.RelationEvaluator`) answering one
+question: *how does this body of evidence bear on this hypothesis?* Everything
+else is held constant — the planner and its recorded turns, the evidence (through
+the same normalization the loop uses), the label definitions, and the claims
+policy that runs afterwards and cannot be overridden by an arm.
+
+What is deliberately *not* constant is how the arms are asked. Both model arms
+receive the same label definitions and the same rules text, rendered from
+`models.Definitions()` and `models.Rules`, because an arm told that proximity is
+not a mechanism and an arm not told would make the comparison a comparison of
+prompts.
+
+Two properties are enforced on every arm:
+
+- **Full coverage.** An arm must label every observation it was given, exactly
+  once. A partial answer is an invalid response, not a partial result; a model
+  that quietly drops the inconvenient evidence is the failure this repository
+  exists to prevent.
+- **No substitution.** An arm whose endpoint is missing is *blocked*. It is
+  reported as blocked and contributes no labels. Falling back to another arm
+  would report a result for an experiment that never ran.
+
+Model calls are charged to the model-call budget, and only calls marked remote
+are charged — the deterministic arm answers from rules and must not be priced as
+if it called a model. Evidence is labelled incrementally and a hypothesis revised
+by the planner has its labels dropped, so an arm's call count is a property of the
+arm rather than of how often the loop happens to reassess.
+
+## Reading a comparison
+
+```bash
+go run ./cmd/vora-probe evaluate --out .probe/evaluation        # fixed input
+go run ./cmd/vora-probe evaluate --loop --repeats 3             # plus whole-loop
+go run ./cmd/vora-probe replay test/fixtures/oom/oom-positive --evaluator jev
+```
+
+Endpoints are run configuration, never build-time constants:
+
+| Variable | Used by |
+| --- | --- |
+| `VORA_PROBE_MODEL_BASE_URL`, `VORA_PROBE_MODEL_API_KEY`, `VORA_PROBE_MODEL`, `VORA_PROBE_MODEL_MAX_OUTPUT_TOKENS` | baseline arm (`POST {base}/chat/completions`) |
+| `VORA_PROBE_JEV_BASE_URL`, `VORA_PROBE_JEV_API_KEY`, `VORA_PROBE_JEV_MODEL` | Jev arm (`POST {base}/v1/systemone`) |
+
+With none set, the run still produces a comparison: the deterministic arm
+answers, the model arms are reported as blocked. With one set, the other is still
+reported as blocked. This is the intended offline behaviour, not a degraded mode.
+
+The fixed-input suite lives in `test/fixtures/relations/`, split into `dev` and
+`held-out`. The splits must be disjoint — `LoadSplits` refuses otherwise — because
+a "held-out" case that also appears in development measures memorisation. Each
+case carries a `rationale`, which is the claim that its expected label is
+correct; if the rules cannot agree with a case's rationale, the case is wrong
+rather than the arm, and the acceptance test says so.
+
+A case is a *body* of evidence with one designated `target`, because real
+questions need context: asking whether a rollout caused an impact requires both
+the rollout and the impact measurement.
+
+### What the numbers mean, and do not
+
+The output is counts, a full confusion matrix, and the spread across repeats.
+There is no statistical claim, and the report says so itself. A case answered
+differently across repeats is reported separately as *unstable*: an arm that
+answers differently each run is unusable even when its average looks fine.
+
+Signals are counted separately because they are different failures:
+
+| Signal | Meaning |
+| --- | --- |
+| agreement | the arm's label matched the case's expected label |
+| unsupported supports | the arm asserted `supports` where the case expects anything else — an unfounded causal claim, worse than declining to decide |
+| insufficient-context accuracy | of the cases that should be declined, how many were declined rather than guessed |
+| unsafe recommendation | (whole loop) an arm produced a recommendation on a case whose cause the ground truth says is not established |
+| traceability failures | (whole loop) a finding was published without citing evidence |
+| unstable cases | repeats disagreed with each other |
+
+`confidence` returned by Jev is the concentration of its answer distribution. It
+is retained as classification metadata, worded as such in the report, and is
+never presented as the probability that a label or a root cause is correct. No
+arm's confidence can override the claims policy.
+
+Cost is reported only when a price is known, and only for arms that actually
+called a model. A guessed price next to exact counts is worse than no price.
+
+Jev is not required to win. If the deterministic rules beat both model arms — as
+they do on the current authored suite, which the rules were written against —
+that is the result, and the held-out split is there to say how much of it
+survives being written against.
+
+## Limits
 
 Steps 1 and 2 do not produce a model benchmark. They produce four deterministic
 cases evaluated against a hidden key. The numbers that matter here are
@@ -169,10 +261,12 @@ comparison that shows it does not help is a result.
 ## Commands
 
 ```bash
-go test ./...                                   # 112 tests, offline
-go test ./test/fixtures -run TestFixtureIntegrity -update   # re-freeze a payload change
+go test ./...                                   # offline, no credentials
+go test ./test/fixtures -run TestFixtureIntegrity -update          # re-freeze a fixture payload
+go test ./internal/evaluation -run TestCaseIntegrity -update       # re-freeze a case payload
 go run ./cmd/vora-probe replay test/fixtures/oom/oom-positive --out .probe
-go run ./cmd/vora-probe replay test/fixtures/oom/oom-positive --json
+go run ./cmd/vora-probe replay test/fixtures/oom/oom-positive --evaluator jev
+go run ./cmd/vora-probe evaluate --out .probe/evaluation --loop
 go run ./cmd/vora-probe verify
 ```
 

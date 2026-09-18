@@ -334,3 +334,49 @@ func replayEvidence(t *testing.T, dir string) []investigation.Observation {
 	}
 	return obs
 }
+
+// TestStateEnvelopeStaysWithinBudget guards the split between the two budgets: the
+// worker's own state must stay small even when a report is large, and evidence that
+// does not fit must be truncated and reported rather than grown.
+func TestStateEnvelopeStaysWithinBudget(t *testing.T) {
+	for _, dir := range cases(t) {
+		t.Run(filepath.Base(dir), func(t *testing.T) {
+			budget := investigation.DefaultBudgets()
+			var largest int
+			var observations int
+			result, err := probe.Replay(context.Background(), probe.ReplayOptions{
+				BundleDir: dir,
+				OutDir:    t.TempDir(),
+				Budget:    budget,
+				OnEnvelope: func(env investigation.StepEnvelope) {
+					raw, err := json.Marshal(env)
+					if err != nil {
+						t.Fatalf("marshal envelope: %v", err)
+					}
+					if len(raw) > largest {
+						largest = len(raw)
+					}
+					observations = len(env.Observations)
+				},
+			})
+			if err != nil {
+				t.Fatalf("replay: %v", err)
+			}
+			if int64(largest) > budget.MaxEnvelopeBytes {
+				t.Fatalf("the state envelope reached %d bytes, over the %d budget", largest, budget.MaxEnvelopeBytes)
+			}
+			if observations == 0 {
+				t.Fatal("the run collected no evidence")
+			}
+			// The report is bound by the response budget, not the state budget.
+			raw, err := json.Marshal(result.Report)
+			if err != nil {
+				t.Fatalf("marshal report: %v", err)
+			}
+			if int64(len(raw)) > budget.MaxEnvelopeBytes {
+				t.Logf("report is %d bytes, larger than the %d byte state budget, which is expected",
+					len(raw), budget.MaxEnvelopeBytes)
+			}
+		})
+	}
+}

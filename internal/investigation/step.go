@@ -72,6 +72,7 @@ func (p Pending) Validate() error {
 type ObservationSummary struct {
 	ID           string            `json:"id"`
 	Type         ObservationType   `json:"type"`
+	Source       string            `json:"source"`
 	Entity       string            `json:"entity"`
 	Statement    string            `json:"statement"`
 	Window       Window            `json:"window"`
@@ -87,6 +88,7 @@ func (o Observation) Summary() ObservationSummary {
 	return ObservationSummary{
 		ID:           o.ID,
 		Type:         o.Type,
+		Source:       o.Source,
 		Entity:       o.Entity,
 		Statement:    o.Statement,
 		Window:       o.Window,
@@ -186,19 +188,20 @@ func HypothesisFromSpec(ids *IDGen, h HypothesisSpec) Hypothesis {
 // StepEnvelope is the whole worker state: bounded, self-describing and complete.
 // Nothing else is needed to reproduce a step.
 type StepEnvelope struct {
-	SchemaVersion string         `json:"schema_version"`
-	Incident      Incident       `json:"incident"`
-	Run           Run            `json:"run"`
-	Step          int            `json:"step"`
-	Phase         string         `json:"phase"`
-	ModelAttempts int            `json:"model_attempts"`
-	Hypotheses    []Hypothesis   `json:"hypotheses"`
-	Observations  []Observation  `json:"observations"`
-	Relations     []Relation     `json:"relations"`
-	Decisions     []Decision     `json:"decisions"`
-	Trace         []Call         `json:"trace,omitempty"`
-	Counters      map[string]int `json:"counters,omitempty"`
-	Note          string         `json:"note,omitempty"`
+	SchemaVersion  string          `json:"schema_version"`
+	Incident       Incident        `json:"incident"`
+	Run            Run             `json:"run"`
+	Step           int             `json:"step"`
+	Phase          string          `json:"phase"`
+	ModelAttempts  int             `json:"model_attempts"`
+	Hypotheses     []Hypothesis    `json:"hypotheses"`
+	Observations   []Observation   `json:"observations"`
+	Relations      []Relation      `json:"relations"`
+	Decisions      []Decision      `json:"decisions"`
+	Trace          []Call          `json:"trace,omitempty"`
+	EvaluatorCalls []EvaluatorCall `json:"evaluator_calls,omitempty"`
+	Counters       map[string]int  `json:"counters,omitempty"`
+	Note           string          `json:"note,omitempty"`
 }
 
 func (e StepEnvelope) Validate(maxBytes int64) error {

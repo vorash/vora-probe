@@ -17,6 +17,9 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/vorash/vora-probe/internal/gateway"
+	"github.com/vorash/vora-probe/internal/investigation"
+	"github.com/vorash/vora-probe/internal/models"
 	"github.com/vorash/vora-probe/internal/probe"
 	"github.com/vorash/vora-probe/test/fixtures"
 )
@@ -24,11 +27,19 @@ import (
 const usage = `vora-probe investigates a service read-only and explains what it found.
 
 usage:
-  vora-probe replay <fixture-dir> [--out DIR] [--attempt N] [--json]
-        run a full investigation against a frozen fixture, offline
+  vora-probe replay <fixture-dir> [--out DIR] [--attempt N] [--evaluator ARM] [--json]
+        run a full investigation against a frozen fixture
+  vora-probe evaluate [--suite relations] [--split dev|held-out|all]
+                      [--evaluators deterministic,baseline,jev] [--repeats N] [--loop] [--out DIR] [--json]
+        compare evidence-relation evaluators; arms without a configured endpoint
+        are reported as blocked rather than substituted
   vora-probe verify [<fixtures-root>]
         check fixture integrity and the hidden answer keys
   vora-probe version
+
+endpoints are run configuration, not build-time constants:
+  VORA_PROBE_MODEL_BASE_URL, VORA_PROBE_MODEL_API_KEY, VORA_PROBE_MODEL, VORA_PROBE_MODEL_MAX_OUTPUT_TOKENS
+  VORA_PROBE_JEV_BASE_URL, VORA_PROBE_JEV_API_KEY, VORA_PROBE_JEV_MODEL
 `
 
 func main() {
@@ -46,6 +57,8 @@ func run(args []string) error {
 	switch args[0] {
 	case "replay":
 		return replay(args[1:])
+	case "evaluate":
+		return evaluate(args[1:])
 	case "verify":
 		return verify(args[1:])
 	case "version":
@@ -60,10 +73,34 @@ func run(args []string) error {
 	}
 }
 
+// evaluatorArm resolves --evaluator to the arm the engine should use.
+func evaluatorArm(name string) (investigation.RelationEvaluator, error) {
+	if name == "" || name == investigation.DeterministicArm {
+		return investigation.DeterministicEvaluator{Policy: investigation.DefaultClaimPolicy()}, nil
+	}
+	cfg := models.ConfigFromEnv()
+	switch name {
+	case investigation.BaselineArm:
+		if !cfg.Baseline.Configured() {
+			return nil, fmt.Errorf("evaluator %q needs VORA_PROBE_MODEL_BASE_URL", name)
+		}
+		return models.BaselineArm{Endpoint: cfg.Baseline, MaxResponseBytes: 1 << 20}, nil
+	case investigation.JevArm:
+		if !cfg.Jev.Configured() {
+			return nil, fmt.Errorf("evaluator %q needs VORA_PROBE_JEV_BASE_URL", name)
+		}
+		return models.JevArm{Endpoint: cfg.Jev, MaxResponseBytes: 1 << 20}, nil
+	default:
+		return nil, fmt.Errorf("unknown evaluator %q; known: %s, %s, %s",
+			name, investigation.DeterministicArm, investigation.BaselineArm, investigation.JevArm)
+	}
+}
+
 func replay(args []string) error {
 	flags := flag.NewFlagSet("replay", flag.ContinueOnError)
 	out := flags.String("out", ".probe", "directory for the journal and report artifacts")
 	attempt := flags.Int("attempt", 1, "attempt number recorded on the run")
+	evaluator := flags.String("evaluator", investigation.DeterministicArm, "evidence-relation arm: deterministic, baseline or jev")
 	asJSON := flags.Bool("json", false, "print the report JSON instead of a summary")
 	if err := flags.Parse(args); err != nil {
 		return err
@@ -80,10 +117,19 @@ func replay(args []string) error {
 		return fmt.Errorf("replay needs exactly one fixture directory")
 	}
 
+	arm, err := evaluatorArm(*evaluator)
+	if err != nil {
+		return err
+	}
 	result, err := probe.Replay(context.Background(), probe.ReplayOptions{
 		BundleDir: positional[0],
 		OutDir:    *out,
 		Attempt:   *attempt,
+		Engine: &investigation.Engine{
+			Policy:    gateway.DefaultPolicy(),
+			Claims:    investigation.DefaultClaimPolicy(),
+			Relations: arm,
+		},
 	})
 	if err != nil {
 		return err
@@ -99,7 +145,7 @@ func replay(args []string) error {
 	}
 
 	report := result.Report
-	fmt.Printf("%s  %s (%s)\n", report.Incident.ID, report.Incident.Service, report.Run.Status)
+	fmt.Printf("%s  %s (%s, arm %s)\n", report.Incident.ID, report.Incident.Service, report.Run.Status, report.Arm)
 	fmt.Printf("steps %d, infrastructure calls %d, planner turns %d, model calls %d\n",
 		result.Steps, result.InfraCalls, result.PlannerTurns, report.Run.Used.ModelCalls)
 	if report.Leading != nil {

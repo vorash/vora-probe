@@ -1,0 +1,51 @@
+{
+  "schema_version": "probe/v1",
+  "id": "memory-series-unavailable",
+  "split": "dev",
+  "rationale": "The memory series could not be read, so this observation cannot bear on the hypothesis either way. Guessing here is the failure being tested.",
+  "entity": "payment-api",
+  "hypothesis": {
+    "statement": "payment-api exceeded its container memory limit and was terminated",
+    "fault_domain": "kubernetes",
+    "claim_kind": "memory_limit_termination"
+  },
+  "evidence": [
+    {
+      "action": {
+        "kind": "metrics.query",
+        "entity": "payment-api",
+        "reason": "evidence for the classification case",
+        "metric": "container_memory_working_set_bytes",
+        "window": {
+          "start": "2026-09-18T12:00:00Z",
+          "end": "2026-09-18T12:30:00Z"
+        },
+        "resolution": "60s"
+      },
+      "response": {
+        "schema_version": "probe/v1",
+        "kind": "metrics.query",
+        "entity": "payment-api",
+        "status": "unavailable",
+        "completeness": "unavailable",
+        "retrieved_at": "2026-09-18T12:31:05Z",
+        "query": {
+          "datasource": "prometheus",
+          "query": "container_memory_working_set_bytes{service=\"payment-api\"}",
+          "params": {
+            "metric": "container_memory_working_set_bytes"
+          },
+          "resolution": "60s"
+        },
+        "reason": "the metrics backend holds no series for this service in the requested window",
+        "digest": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    }
+  ],
+  "target": "OBS-0001",
+  "expected": "insufficient_context",
+  "forbidden": [
+    "supports",
+    "contradicts"
+  ]
+}

@@ -1,0 +1,83 @@
+{
+  "schema_version": "probe/v1",
+  "id": "memory-sawtooth-is-not-growth",
+  "split": "dev",
+  "rationale": "The container is killed and restarts, so the series rises and falls. Sustained growth is what a leak needs, and this series is not monotonic.",
+  "entity": "payment-api",
+  "hypothesis": {
+    "statement": "payment-api leaks memory across requests",
+    "fault_domain": "application",
+    "claim_kind": "memory_leak"
+  },
+  "evidence": [
+    {
+      "action": {
+        "kind": "metrics.query",
+        "entity": "payment-api",
+        "reason": "evidence for the classification case",
+        "metric": "container_memory_working_set_bytes",
+        "window": {
+          "start": "2026-09-18T12:00:00Z",
+          "end": "2026-09-18T12:30:00Z"
+        },
+        "resolution": "60s"
+      },
+      "response": {
+        "schema_version": "probe/v1",
+        "kind": "metrics.query",
+        "entity": "payment-api",
+        "status": "ok",
+        "completeness": "complete",
+        "retrieved_at": "2026-09-18T12:31:05Z",
+        "query": {
+          "datasource": "prometheus",
+          "query": "container_memory_working_set_bytes{service=\"payment-api\"}",
+          "params": {
+            "metric": "container_memory_working_set_bytes"
+          },
+          "resolution": "60s"
+        },
+        "digest": "sha256:17384be56a328b5447a9c1089e02e60965b271ea30a3ffaad894db0fd598d8af",
+        "payload": {
+          "metric": "container_memory_working_set_bytes",
+          "unit": "unit",
+          "samples": [
+            {
+              "at": "2026-09-18T12:00:00Z",
+              "value": 188743680
+            },
+            {
+              "at": "2026-09-18T12:05:00Z",
+              "value": 204472320
+            },
+            {
+              "at": "2026-09-18T12:10:00Z",
+              "value": 251658240
+            },
+            {
+              "at": "2026-09-18T12:15:00Z",
+              "value": 429916160
+            },
+            {
+              "at": "2026-09-18T12:20:00Z",
+              "value": 553648128
+            },
+            {
+              "at": "2026-09-18T12:25:00Z",
+              "value": 190840832
+            },
+            {
+              "at": "2026-09-18T12:30:00Z",
+              "value": 209715200
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "target": "OBS-0001",
+  "expected": "contradicts",
+  "forbidden": [
+    "supports"
+  ]
+}

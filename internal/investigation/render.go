@@ -22,6 +22,7 @@ func (r Report) Markdown() string {
 		r.Incident.Window.Start.UTC().Format("2006-01-02T15:04:05Z"),
 		r.Incident.Window.End.UTC().Format("2006-01-02T15:04:05Z"),
 		r.Run.ID, r.Run.Attempt, r.Run.Status)
+	fmt.Fprintf(&b, "- evaluator arm: %s (%s)\n", r.Arm, r.ArmVersion)
 	fmt.Fprintf(&b, "- budget: %d/%d infrastructure calls, %d/%d model calls, %d steps\n\n",
 		r.Run.Used.InfraCalls, r.Run.Budgets.MaxInfraCalls,
 		r.Run.Used.ModelCalls, r.Run.Budgets.MaxModelCalls, r.Run.Used.Steps)
@@ -138,6 +139,18 @@ func (r Report) Markdown() string {
 		}
 	}
 
+	if len(r.EvaluatorCalls) > 0 {
+		b.WriteString("## Evaluator calls\n\n")
+		b.WriteString("| hypothesis | arm | model | observations | prompt | completion | ms | status |\n")
+		b.WriteString("| --- | --- | --- | --- | --- | --- | --- | --- |\n")
+		for _, c := range r.EvaluatorCalls {
+			fmt.Fprintf(&b, "| %s | %s | %s | %d | %d | %d | %d | %s |\n",
+				c.Hypothesis, c.Arm, emptyDash(c.Model), c.Observations,
+				c.PromptTokens, c.CompletionTokens, c.LatencyMS, c.Status)
+		}
+		b.WriteString("\n")
+	}
+
 	if len(r.Trace) > 0 {
 		b.WriteString("## Call trace\n\n")
 		if anyLatency(r.Trace) {
@@ -163,6 +176,13 @@ func (r Report) Markdown() string {
 	}
 
 	return b.String()
+}
+
+func emptyDash(s string) string {
+	if s == "" {
+		return "-"
+	}
+	return s
 }
 
 func linkIDs(links []EvidenceLink) string {

@@ -1,0 +1,63 @@
+{
+  "schema_version": "probe/v1",
+  "id": "memory-limit-reached",
+  "split": "dev",
+  "rationale": "The container is recorded as OOMKilled, so the evidence bears directly on the mechanism the hypothesis names.",
+  "entity": "payment-api",
+  "hypothesis": {
+    "statement": "payment-api exceeded its container memory limit and was terminated",
+    "fault_domain": "kubernetes",
+    "claim_kind": "memory_limit_termination"
+  },
+  "evidence": [
+    {
+      "action": {
+        "kind": "kubernetes.containers",
+        "entity": "payment-api",
+        "reason": "read the termination history"
+      },
+      "response": {
+        "schema_version": "probe/v1",
+        "kind": "kubernetes.containers",
+        "entity": "payment-api",
+        "status": "ok",
+        "completeness": "complete",
+        "retrieved_at": "2026-09-18T12:31:07Z",
+        "query": {
+          "datasource": "kubernetes",
+          "query": "pods -n lab -l app=payment-api"
+        },
+        "digest": "sha256:3b67845706e2746a7561a3fce1d7b6aae8ed033c018a429343142889dea64ef0",
+        "payload": {
+          "namespace": "lab",
+          "pods": [
+            {
+              "name": "payment-api-5f8c9d7b4-x2lkq",
+              "namespace": "lab",
+              "phase": "Running",
+              "node": "mini-vora",
+              "start_time": "2026-09-18T11:47:12Z",
+              "containers": [
+                {
+                  "name": "app",
+                  "ready": false,
+                  "restart_count": 7,
+                  "state": "waiting",
+                  "reason": "CrashLoopBackOff",
+                  "last_terminated_at": "2026-09-18T12:21:04Z",
+                  "last_terminated_reason": "OOMKilled",
+                  "last_exit_code": 137
+                }
+              ]
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "target": "OBS-0001",
+  "expected": "supports",
+  "forbidden": [
+    "contradicts"
+  ]
+}
