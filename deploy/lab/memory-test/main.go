@@ -47,6 +47,37 @@ func main() {
 		}
 		s.hold(mb)
 	}
+	// A ramp exists because a container that allocates its way past the limit in
+	// one step is killed between scrapes: the working set never shows the
+	// approach, and the kill cannot be corroborated. RAMP_MB climbs to a chosen
+	// level near the limit; RAMP_HOLD_MS holds it there long enough to be
+	// sampled; RAMP_PUSH_MB then allocates past the limit to force the kill. The
+	// hold is what makes the corroboration reliable rather than a race against
+	// the scrape interval.
+	if v := os.Getenv("RAMP_MB"); v != "" {
+		mb, err := strconv.Atoi(v)
+		if err != nil || mb <= 0 {
+			log.Fatalf("RAMP_MB must be a positive integer, got %q", v)
+		}
+		stepMS := 1000
+		if v := os.Getenv("RAMP_STEP_MS"); v != "" {
+			if stepMS, err = strconv.Atoi(v); err != nil || stepMS <= 0 {
+				log.Fatalf("RAMP_STEP_MS must be a positive integer, got %q", v)
+			}
+		}
+		holdMS, pushMB := 0, 0
+		if v := os.Getenv("RAMP_HOLD_MS"); v != "" {
+			if holdMS, err = strconv.Atoi(v); err != nil || holdMS < 0 {
+				log.Fatalf("RAMP_HOLD_MS must be a non-negative integer, got %q", v)
+			}
+		}
+		if v := os.Getenv("RAMP_PUSH_MB"); v != "" {
+			if pushMB, err = strconv.Atoi(v); err != nil || pushMB < 0 {
+				log.Fatalf("RAMP_PUSH_MB must be a non-negative integer, got %q", v)
+			}
+		}
+		go s.ramp(mb, 16, time.Duration(stepMS)*time.Millisecond, time.Duration(holdMS)*time.Millisecond, pushMB)
+	}
 	if v := os.Getenv("FAIL_LIVENESS_AFTER"); v != "" {
 		d, err := time.ParseDuration(v)
 		if err != nil {
@@ -106,12 +137,37 @@ func (s *state) allocate(w http.ResponseWriter, r *http.Request) {
 func (s *state) hold(mb int) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.appendLocked(mb)
+}
+
+// appendLocked grows the working set by mb, touching every page so the RSS
+// actually grows rather than the allocation staying virtual.
+func (s *state) appendLocked(mb int) {
 	block := make([]byte, mb<<20)
 	for i := 0; i < len(block); i += 4096 {
 		block[i] = 1
 	}
 	s.held = append(s.held, block)
 	s.heldMB += mb
+}
+
+// ramp climbs to totalMB in stepMB increments, holds for holdMS so the level is
+// sampled, then pushes past it by pushMB to force the kill. The hold is the
+// point: a level the scrapes actually see is what lets a termination be
+// corroborated by memory evidence.
+func (s *state) ramp(totalMB, stepMB int, step, holdMS time.Duration, pushMB int) {
+	for held := 0; held < totalMB; held += stepMB {
+		s.mu.Lock()
+		s.appendLocked(stepMB)
+		s.mu.Unlock()
+		time.Sleep(step)
+	}
+	if holdMS > 0 {
+		time.Sleep(holdMS)
+	}
+	if pushMB > 0 {
+		s.hold(pushMB)
+	}
 }
 
 func (s *state) free(w http.ResponseWriter, _ *http.Request) {
