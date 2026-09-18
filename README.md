@@ -42,14 +42,18 @@ Go 1.25 or newer. No third-party dependencies.
 ```bash
 go test ./...
 
-go run ./cmd/probe replay test/fixtures/oom/oom-positive --out .probe
-go run ./cmd/probe replay test/fixtures/oom/oom-positive --json
-go run ./cmd/probe verify
+go run ./cmd/vora-probe replay test/fixtures/oom/oom-positive --out .probe
+go run ./cmd/vora-probe replay test/fixtures/oom/oom-positive --json
+go run ./cmd/vora-probe verify
 ```
 
 `replay` runs a full investigation against a frozen fixture: the same step
 protocol, gateway and report path as a live run, with recorded answers in place of
 a network. No credentials, no cluster and no model endpoint are involved.
+
+Once the Vora CLI grows plugin dispatch (vorash/vora#37), the same entry point is
+`vora probe replay …`; the binary stays standalone so it also works where the
+`vora` CLI is not installed.
 
 ## What it refuses
 

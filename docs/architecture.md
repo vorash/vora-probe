@@ -171,10 +171,10 @@ comparison that shows it does not help is a result.
 ```bash
 go test ./...                                   # 112 tests, offline
 go test ./test/fixtures -run TestFixtureIntegrity -update   # re-freeze a payload change
-go run ./cmd/probe replay test/fixtures/oom/oom-positive --out .probe
-go run ./cmd/probe replay test/fixtures/oom/oom-positive --json
-go run ./cmd/probe verify
+go run ./cmd/vora-probe replay test/fixtures/oom/oom-positive --out .probe
+go run ./cmd/vora-probe replay test/fixtures/oom/oom-positive --json
+go run ./cmd/vora-probe verify
 ```
 
-`cmd/probe-worker` is the fixed worker binary: one serialized
+`cmd/vora-probe-worker` is the fixed worker binary: one serialized
 `WorkerInput` on stdin, one `StepResult` on stdout, no arguments.

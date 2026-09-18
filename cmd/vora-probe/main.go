@@ -1,8 +1,12 @@
-// Command probe is the manual entry point for an investigation.
+// Command vora-probe is the manual entry point for an investigation.
 //
-// Steps 1 and 2 run entirely offline: `probe replay` exercises the whole loop
-// against a frozen fixture with recorded model responses, no credentials and no
-// network. `probe investigate` arrives with the live lab in step 5.
+// Steps 1 and 2 run entirely offline: `vora-probe replay` exercises the whole
+// loop against a frozen fixture with recorded model responses, no credentials
+// and no network. `vora-probe investigate` arrives with the live lab in step 5.
+//
+// The binary stays standalone rather than becoming a `vora` subcommand: probe
+// consumes Vora's public API, so folding it in would invert the dependency and
+// couple the two release cadences for no user-visible gain.
 package main
 
 import (
@@ -17,19 +21,19 @@ import (
 	"github.com/vorash/vora-probe/test/fixtures"
 )
 
-const usage = `probe investigates a service read-only and explains what it found.
+const usage = `vora-probe investigates a service read-only and explains what it found.
 
 usage:
-  probe replay <fixture-dir> [--out DIR] [--attempt N] [--json]
+  vora-probe replay <fixture-dir> [--out DIR] [--attempt N] [--json]
         run a full investigation against a frozen fixture, offline
-  probe verify [<fixtures-root>]
+  vora-probe verify [<fixtures-root>]
         check fixture integrity and the hidden answer keys
-  probe version
+  vora-probe version
 `
 
 func main() {
 	if err := run(os.Args[1:]); err != nil {
-		fmt.Fprintln(os.Stderr, "probe:", err)
+		fmt.Fprintln(os.Stderr, "vora-probe:", err)
 		os.Exit(1)
 	}
 }
@@ -45,7 +49,7 @@ func run(args []string) error {
 	case "verify":
 		return verify(args[1:])
 	case "version":
-		fmt.Println("probe", "probe/v1")
+		fmt.Println("vora-probe", "probe/v1")
 		return nil
 	case "help", "-h", "--help":
 		fmt.Print(usage)

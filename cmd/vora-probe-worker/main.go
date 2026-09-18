@@ -1,4 +1,4 @@
-// Command probe-worker is the fixed worker binary the controller invokes, one
+// Command vora-probe-worker is the fixed worker binary the controller invokes, one
 // process per transition: a bounded state envelope on stdin, exactly one
 // schema-validated request or the final report on stdout.
 //
@@ -17,7 +17,7 @@ import (
 
 func main() {
 	if len(os.Args) > 1 {
-		fmt.Fprintln(os.Stderr, "probe-worker takes no arguments; it reads one state envelope on stdin")
+		fmt.Fprintln(os.Stderr, "vora-probe-worker takes no arguments; it reads one state envelope on stdin")
 		os.Exit(2)
 	}
 	budget := investigation.DefaultBudgets()
@@ -26,7 +26,7 @@ func main() {
 		Claims: investigation.DefaultClaimPolicy(),
 	}
 	if err := worker.Run(engine, os.Stdin, os.Stdout, budget.MaxEnvelopeBytes, budget.MaxResponseBytes); err != nil {
-		fmt.Fprintln(os.Stderr, "probe-worker:", err)
+		fmt.Fprintln(os.Stderr, "vora-probe-worker:", err)
 		os.Exit(1)
 	}
 }
