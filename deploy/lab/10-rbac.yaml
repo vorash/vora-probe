@@ -1,0 +1,114 @@
+# Identities for the lab.
+#
+# Two are deliberately separate, because they answer different questions:
+#
+#   probe-investigator — what the controller may read. Namespace-scoped, read
+#     only, and never Secrets, exec, or write. This is the identity the claims
+#     in a report are made under.
+#
+#   prometheus — what the scrape loop needs, which includes the kubelet proxy.
+#     That is more privilege, so it belongs to the scraper and never to the
+#     investigator.
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: probe-investigator
+  namespace: probe-lab
+---
+# Read-only, namespace-scoped. Absence is denial: no Secrets, no pods/exec, no
+# pods/log, no writes, no cluster scope.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: probe-investigator
+  namespace: probe-lab
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "services", "endpoints", "events"]
+    verbs: ["get", "list"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "replicasets"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: probe-investigator
+  namespace: probe-lab
+subjects:
+  - kind: ServiceAccount
+    name: probe-investigator
+    namespace: probe-lab
+roleRef:
+  kind: Role
+  name: probe-investigator
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: prometheus
+  namespace: probe-lab
+---
+# Scraping container memory means proxying to the kubelet. The standard
+# nonResourceURLs/nodes-proxy pair is exactly what the Prometheus scrape config
+# uses and nothing more.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: probe-lab-prometheus
+rules:
+  - apiGroups: [""]
+    resources: ["nodes/proxy", "nodes/metrics", "services", "endpoints", "pods"]
+    verbs: ["get", "list", "watch"]
+  - nonResourceURLs: ["/metrics"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: probe-lab-prometheus
+subjects:
+  - kind: ServiceAccount
+    name: prometheus
+    namespace: probe-lab
+roleRef:
+  kind: ClusterRole
+  name: probe-lab-prometheus
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: kube-state-metrics
+  namespace: probe-lab
+---
+# Kube-state-metrics is scoped to this namespace (`--namespaces=probe-lab`), so
+# its RBAC is a namespaced Role rather than a cluster-wide one.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: kube-state-metrics
+  namespace: probe-lab
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "services", "endpoints"]
+    verbs: ["list", "watch"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "replicasets"]
+    verbs: ["list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: kube-state-metrics
+  namespace: probe-lab
+subjects:
+  - kind: ServiceAccount
+    name: kube-state-metrics
+    namespace: probe-lab
+roleRef:
+  kind: Role
+  name: kube-state-metrics
+  apiGroup: rbac.authorization.k8s.io
