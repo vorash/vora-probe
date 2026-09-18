@@ -33,6 +33,9 @@ usage:
                       [--evaluators deterministic,baseline,jev] [--repeats N] [--loop] [--out DIR] [--json]
         compare evidence-relation evaluators; arms without a configured endpoint
         are reported as blocked rather than substituted
+  vora-probe investigate --config <lab.json>
+        run an investigation against the live lab: the worker in a Vora sandbox,
+        Prometheus and Kubernetes evidence, and model-driven planning
   vora-probe verify [<fixtures-root>]
         check fixture integrity and the hidden answer keys
   vora-probe version
@@ -59,6 +62,8 @@ func run(args []string) error {
 		return replay(args[1:])
 	case "evaluate":
 		return evaluate(args[1:])
+	case "investigate":
+		return investigate(args[1:])
 	case "verify":
 		return verify(args[1:])
 	case "version":

@@ -206,6 +206,19 @@ func (d FaultDomain) Valid() bool {
 	return false
 }
 
+// AllFaultDomains is the closed set of domains a hypothesis may be filed under.
+// It exists so a prompt can render the set from code rather than restating it,
+// which is what stops the prompt and the contract drifting apart.
+var AllFaultDomains = []FaultDomain{
+	DomainApplication,
+	DomainKubernetes,
+	DomainDatabase,
+	DomainNetwork,
+	DomainExternalDependency,
+	DomainHost,
+	DomainUnknown,
+}
+
 type HypothesisStatus string
 
 const (

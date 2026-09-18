@@ -9,10 +9,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/vorash/vora-probe/fixtures"
 	"github.com/vorash/vora-probe/gateway"
 	"github.com/vorash/vora-probe/internal/store"
 	"github.com/vorash/vora-probe/internal/vora"
 	"github.com/vorash/vora-probe/investigation"
+	"github.com/vorash/vora-probe/models"
 )
 
 // The live controller leg.
@@ -194,6 +196,12 @@ type LiveOptions struct {
 	// which is what step 4 validated; a live investigation injects the lab
 	// adapter and reads the same port.
 	Gateway gateway.Gateway
+	// Planner overrides how the next step is chosen. Nil means the recorded
+	// fixture turns; a live investigation injects a model-driven planner.
+	Planner models.Planner
+	// Incident, when set, is the subject of the run and BundleDir is not read.
+	// A live lab run has no fixture to load it from.
+	Incident *investigation.Incident
 }
 
 type LiveResult struct {
@@ -228,17 +236,38 @@ func Investigate(ctx context.Context, opts LiveOptions) (LiveResult, error) {
 		engine = &investigation.Engine{Policy: gateway.DefaultPolicy(), Claims: investigation.DefaultClaimPolicy()}
 	}
 
-	bundle, err := loadBundle(opts.BundleDir)
-	if err != nil {
-		return LiveResult{}, err
+	// An incident comes from run configuration or from a fixture. A live lab run
+	// has no fixture; the step-4 transport check still uses one, because its
+	// evidence is frozen on purpose.
+	var (
+		incident investigation.Incident
+		bundle   *fixtures.Bundle
+	)
+	if opts.Incident != nil {
+		incident = *opts.Incident
+	} else {
+		loaded, err := loadBundle(opts.BundleDir)
+		if err != nil {
+			return LiveResult{}, err
+		}
+		bundle, incident = &loaded, loaded.Incident
 	}
 	now := wallClock
-	planner := openPlanner(engine, bundle, now)
-	// Evidence comes from the fixture unless a live adapter is supplied. The
-	// planner is the recorded one either way; swapping the gateway is step 6.
+	engine.Now = now
+	planner := opts.Planner
+	if planner == nil {
+		if bundle == nil {
+			return LiveResult{}, errors.New("a recorded planner needs a fixture bundle; supply Planner or BundleDir")
+		}
+		planner = models.NewRecordedPlanner(plannerTurns(*bundle))
+	}
+	// Evidence comes from the fixture unless a live adapter is supplied.
 	gw := opts.Gateway
 	if gw == nil {
-		fixture, err := openFixtureGateway(engine, bundle, now)
+		if bundle == nil {
+			return LiveResult{}, errors.New("the fixture gateway needs a bundle; supply Gateway or BundleDir")
+		}
+		fixture, err := openFixtureGateway(engine, *bundle, now)
 		if err != nil {
 			return LiveResult{}, err
 		}
@@ -250,7 +279,7 @@ func Investigate(ctx context.Context, opts LiveOptions) (LiveResult, error) {
 	}
 	defer lock.Release()
 
-	runID := fmt.Sprintf("RUN-%s-%03d", bundle.Incident.ID, opts.Attempt)
+	runID := fmt.Sprintf("RUN-%s-%03d", incident.ID, opts.Attempt)
 	runDir := filepath.Join(opts.OutDir, runID)
 	journal, err := store.OpenJournal(runDir, runID)
 	if err != nil {
@@ -279,7 +308,7 @@ func Investigate(ctx context.Context, opts LiveOptions) (LiveResult, error) {
 			return nil, err
 		}
 		if err := journal.Append(store.Event{
-			RunID: runID, IncidentID: bundle.Incident.ID, Kind: store.EventSandbox,
+			RunID: runID, IncidentID: incident.ID, Kind: store.EventSandbox,
 			At:      now(),
 			Payload: mustJSON(sandboxEvent{Phase: "created", Sandbox: sandbox.ID, Image: opts.Image, Tenant: "probe", Network: vora.NetworkNone}),
 		}); err != nil {
@@ -309,7 +338,7 @@ func Investigate(ctx context.Context, opts LiveOptions) (LiveResult, error) {
 			// A leaked sandbox is worth a journal entry even though the teardown
 			// path has nowhere to return an error to.
 			_ = journal.Append(store.Event{
-				RunID: runID, IncidentID: bundle.Incident.ID, Kind: store.EventSandbox,
+				RunID: runID, IncidentID: incident.ID, Kind: store.EventSandbox,
 				At:      now(),
 				Payload: mustJSON(sandboxEvent{Phase: "destroy_failed", Sandbox: id, Reason: err.Error()}),
 			})
@@ -317,7 +346,7 @@ func Investigate(ctx context.Context, opts LiveOptions) (LiveResult, error) {
 		}
 		destroyed = true
 		_ = journal.Append(store.Event{
-			RunID: runID, IncidentID: bundle.Incident.ID, Kind: store.EventSandbox,
+			RunID: runID, IncidentID: incident.ID, Kind: store.EventSandbox,
 			At:      now(),
 			Payload: mustJSON(sandboxEvent{Phase: "destroyed", Sandbox: id}),
 		})
@@ -333,7 +362,7 @@ func Investigate(ctx context.Context, opts LiveOptions) (LiveResult, error) {
 		attempt:    opts.Attempt,
 		runID:      runID,
 		runDir:     runDir,
-		incident:   bundle.Incident,
+		incident:   incident,
 		maxSteps:   opts.MaxSteps,
 		onEnvelope: opts.OnEnvelope,
 		onCreate:   onCreate,
@@ -357,7 +386,7 @@ func Investigate(ctx context.Context, opts LiveOptions) (LiveResult, error) {
 		JournalPath:        journal.Path(),
 		ReportJSONPath:     res.reportJSONPath,
 		ReportMarkdownPath: res.reportMarkdownPath,
-		PlannerTurns:       planner.Consumed(),
+		PlannerTurns:       recordedTurns(planner),
 		InfraCalls:         gw.Executed(),
 		Steps:              res.steps,
 	}
@@ -371,6 +400,16 @@ func Investigate(ctx context.Context, opts LiveOptions) (LiveResult, error) {
 // which is a real failure this leg found: fixtures recorded hours before a run
 // would otherwise stop before doing any work.
 func wallClock() time.Time { return time.Now().UTC() }
+
+// recordedTurns reports how many recorded planner turns were consumed. A live
+// planner has no such counter, and reporting zero is honest rather than
+// inventing a number.
+func recordedTurns(p models.Planner) int {
+	if rp, ok := p.(*models.RecordedPlanner); ok {
+		return rp.Consumed()
+	}
+	return 0
+}
 
 // ttlSeconds keeps the sandbox alive past the run's own wall-clock budget, so it
 // is the controller that reaps it rather than a TTL expiring mid-step.
