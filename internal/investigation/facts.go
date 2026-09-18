@@ -111,6 +111,12 @@ func BuildFacts(entity string, obs []Observation) Facts {
 		if !matchesEntity(o.Entity, entity) {
 			continue
 		}
+		if o.Type == ObsDerived {
+			// Derived observations are computed from facts, so feeding them back
+			// into BuildFacts would be circular and would register a gap for the
+			// payload they deliberately do not carry.
+			continue
+		}
 		switch o.Completeness {
 		case Complete, Redacted:
 		default:

@@ -56,9 +56,31 @@ type IDGen struct{ n map[string]int }
 
 func NewIDGen() *IDGen { return &IDGen{n: map[string]int{}} }
 
+// NewIDGenFrom restores counter state. A step worker is invoked fresh for every
+// transition, so the counters travel in the state envelope; without that, the
+// second observation of a run would be numbered OBS-0001 again.
+func NewIDGenFrom(counters map[string]int) *IDGen {
+	g := NewIDGen()
+	for prefix, n := range counters {
+		g.n[prefix] = n
+	}
+	return g
+}
+
 func (g *IDGen) Next(prefix string) string {
 	g.n[prefix]++
 	return fmt.Sprintf("%s-%04d", prefix, g.n[prefix])
+}
+
+// Snapshot returns the counter state for the next transition.
+func (g *IDGen) Snapshot() map[string]int {
+	out := make(map[string]int, len(g.n))
+	for prefix, n := range g.n {
+		if n > 0 {
+			out[prefix] = n
+		}
+	}
+	return out
 }
 
 const (

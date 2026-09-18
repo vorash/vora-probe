@@ -1,0 +1,152 @@
+// Command probe is the manual entry point for an investigation.
+//
+// Steps 1 and 2 run entirely offline: `probe replay` exercises the whole loop
+// against a frozen fixture with recorded model responses, no credentials and no
+// network. `probe investigate` arrives with the live lab in step 5.
+package main
+
+import (
+	"context"
+	"encoding/json"
+	"flag"
+	"fmt"
+	"os"
+	"path/filepath"
+
+	"github.com/vorash/vora-probe/internal/probe"
+	"github.com/vorash/vora-probe/test/fixtures"
+)
+
+const usage = `probe investigates a service read-only and explains what it found.
+
+usage:
+  probe replay <fixture-dir> [--out DIR] [--attempt N] [--json]
+        run a full investigation against a frozen fixture, offline
+  probe verify [<fixtures-root>]
+        check fixture integrity and the hidden answer keys
+  probe version
+`
+
+func main() {
+	if err := run(os.Args[1:]); err != nil {
+		fmt.Fprintln(os.Stderr, "probe:", err)
+		os.Exit(1)
+	}
+}
+
+func run(args []string) error {
+	if len(args) == 0 {
+		fmt.Fprint(os.Stderr, usage)
+		return fmt.Errorf("a command is required")
+	}
+	switch args[0] {
+	case "replay":
+		return replay(args[1:])
+	case "verify":
+		return verify(args[1:])
+	case "version":
+		fmt.Println("probe", "probe/v1")
+		return nil
+	case "help", "-h", "--help":
+		fmt.Print(usage)
+		return nil
+	default:
+		fmt.Fprint(os.Stderr, usage)
+		return fmt.Errorf("unknown command %q", args[0])
+	}
+}
+
+func replay(args []string) error {
+	flags := flag.NewFlagSet("replay", flag.ContinueOnError)
+	out := flags.String("out", ".probe", "directory for the journal and report artifacts")
+	attempt := flags.Int("attempt", 1, "attempt number recorded on the run")
+	asJSON := flags.Bool("json", false, "print the report JSON instead of a summary")
+	if err := flags.Parse(args); err != nil {
+		return err
+	}
+	// Accept the fixture path before the flags as well as after them.
+	positional := flags.Args()
+	if len(positional) > 1 {
+		if err := flags.Parse(positional[1:]); err != nil {
+			return err
+		}
+		positional = positional[:1]
+	}
+	if len(positional) != 1 {
+		return fmt.Errorf("replay needs exactly one fixture directory")
+	}
+
+	result, err := probe.Replay(context.Background(), probe.ReplayOptions{
+		BundleDir: positional[0],
+		OutDir:    *out,
+		Attempt:   *attempt,
+	})
+	if err != nil {
+		return err
+	}
+
+	if *asJSON {
+		raw, err := json.MarshalIndent(result.Report, "", "  ")
+		if err != nil {
+			return err
+		}
+		fmt.Println(string(raw))
+		return nil
+	}
+
+	report := result.Report
+	fmt.Printf("%s  %s (%s)\n", report.Incident.ID, report.Incident.Service, report.Run.Status)
+	fmt.Printf("steps %d, infrastructure calls %d, planner turns %d, model calls %d\n",
+		result.Steps, result.InfraCalls, result.PlannerTurns, report.Run.Used.ModelCalls)
+	if report.Leading != nil {
+		fmt.Printf("leading claim: %s (%s)\n", report.Leading.Kind, allowedLabel(report.Leading.Allowed))
+	}
+	fmt.Printf("supporting %d, contradicting %d, insufficient context %d\n",
+		len(report.Supporting), len(report.Contradicting), len(report.InsufficientContext))
+	if report.Recommendation != nil {
+		fmt.Printf("recommendation: %s\n", report.Recommendation.Action)
+		fmt.Printf("execution: %s\n", report.Recommendation.Status)
+	} else {
+		fmt.Println("recommendation: none")
+	}
+	fmt.Printf("report: %s\n        %s\njournal: %s\n",
+		result.ReportMarkdownPath, result.ReportJSONPath, result.JournalPath)
+	return nil
+}
+
+func allowedLabel(allowed bool) string {
+	if allowed {
+		return "admissible"
+	}
+	return "refused"
+}
+
+func verify(args []string) error {
+	root := filepath.Join(fixtures.Root(), "oom")
+	if len(args) > 0 {
+		root = args[0]
+	}
+	dirs, err := fixtures.Cases(root)
+	if err != nil {
+		return err
+	}
+	for _, dir := range dirs {
+		bundle, err := fixtures.Load(dir)
+		if err != nil {
+			return err
+		}
+		if err := fixtures.Verify(bundle); err != nil {
+			return fmt.Errorf("%s: %w", dir, err)
+		}
+		truth, err := fixtures.LoadTruth(dir)
+		if err != nil {
+			return err
+		}
+		if err := fixtures.VerifyTruth(truth); err != nil {
+			return fmt.Errorf("%s: %w", dir, err)
+		}
+		fmt.Printf("ok  %-36s %d recorded answers, leading claim %s\n",
+			filepath.Base(dir), len(bundle.Evidence), truth.Expected.LeadingClaim)
+	}
+	return nil
+}

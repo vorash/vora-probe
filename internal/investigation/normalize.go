@@ -171,7 +171,7 @@ func renderContainers(a gateway.Action, pods gateway.PodList) string {
 	if len(parts) == 0 {
 		return fmt.Sprintf("no containers matching %s were returned", a.Entity)
 	}
-	return strings.Join(parts, "; ")
+	return joinBounded(parts, "; ")
 }
 
 func renderEvents(a gateway.Action, events gateway.EventList) string {
@@ -186,7 +186,7 @@ func renderEvents(a gateway.Action, events gateway.EventList) string {
 	if len(parts) == 0 {
 		return fmt.Sprintf("no events matching %s were returned", a.Entity)
 	}
-	return strings.Join(parts, " | ")
+	return joinBounded(parts, " | ")
 }
 
 func renderDeployments(a gateway.Action, deployments gateway.DeploymentList) string {
@@ -206,5 +206,30 @@ func renderDeployments(a gateway.Action, deployments gateway.DeploymentList) str
 	if len(parts) == 0 {
 		return fmt.Sprintf("no deployments matching %s were returned", a.Entity)
 	}
-	return strings.Join(parts, "; ")
+	return joinBounded(parts, "; ")
+}
+
+// maxStatementBytes bounds a rendered statement. Statements are the part of an
+// observation that reaches a model and the worker state, so an unusually large
+// answer must not be able to inflate either; the omitted count keeps the
+// truncation visible.
+const maxStatementBytes = 2048
+
+func joinBounded(parts []string, sep string) string {
+	var b strings.Builder
+	for i, p := range parts {
+		extra := len(p)
+		if b.Len() > 0 {
+			extra += len(sep)
+		}
+		if b.Len()+extra > maxStatementBytes {
+			fmt.Fprintf(&b, "%s(%d further entries omitted: statement length is bounded)", sep, len(parts)-i)
+			return b.String()
+		}
+		if b.Len() > 0 {
+			b.WriteString(sep)
+		}
+		b.WriteString(p)
+	}
+	return b.String()
 }
