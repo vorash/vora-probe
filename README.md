@@ -22,8 +22,11 @@ network and no live infrastructure are required.
 
 ## Status
 
-Repository scaffolding only. Each step lands as its own reviewed pull request;
-steps 3 onwards are additionally gated on operator-supplied infrastructure.
+Step 1 (`feat/contracts-and-fixtures`) is implemented: the domain records, the
+claims policy, the deterministic derivation layer, and four frozen OOM fixtures
+with hidden ground truth. Steps 2 onwards land as their own reviewed pull
+requests; steps 3 onwards are additionally gated on operator-supplied
+infrastructure.
 
 ## Requirements
 
@@ -31,7 +34,10 @@ Go 1.25 or newer. No third-party dependencies.
 
 ## Documentation
 
-- `docs/architecture.md` — trust boundary, step protocol, limits and benchmark interpretation.
+- `docs/claims-policy.md` — what Probe may assert, and the evidence each assertion needs.
+
+`docs/architecture.md` (trust boundary, step protocol, limits, benchmark
+interpretation) arrives with step 2.
 
 ## Licence
 

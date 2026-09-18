@@ -1,0 +1,373 @@
+{
+  "schema_version": "probe/v1",
+  "case": "non-oom-restart",
+  "description": "inventory-api restarts because its liveness probe keeps failing. Memory sits well below the limit and no container was killed for memory, so this must not be reported as an out-of-memory incident.",
+  "incident": {
+    "schema_version": "probe/v1",
+    "id": "INC-0004",
+    "environment": "lab",
+    "service": "inventory-api",
+    "symptom": "inventory-api containers restart and the readiness probe keeps failing",
+    "trigger": "manual",
+    "started_at": "2026-09-18T12:31:00Z",
+    "window": {
+      "start": "2026-09-18T12:00:00Z",
+      "end": "2026-09-18T12:30:00Z"
+    },
+    "status": "open"
+  },
+  "planner": [
+    {
+      "hypotheses": [
+        {
+          "statement": "inventory-api is restarting because its liveness probe fails",
+          "fault_domain": "kubernetes",
+          "claim_kind": "non_memory_restart",
+          "evidence_needed": [
+            "termination reason",
+            "probe failure event"
+          ]
+        },
+        {
+          "statement": "inventory-api exceeded its container memory limit and was terminated",
+          "fault_domain": "kubernetes",
+          "claim_kind": "memory_limit_termination",
+          "evidence_needed": [
+            "container termination reason",
+            "memory working set",
+            "container memory limit"
+          ]
+        }
+      ],
+      "next_action": {
+        "kind": "kubernetes.containers",
+        "entity": "inventory-api",
+        "reason": "read the recorded termination reason and exit code"
+      },
+      "reason": "restarts are the symptom, so start with the termination history"
+    },
+    {
+      "hypotheses": [
+        {
+          "statement": "inventory-api is restarting because its liveness probe fails",
+          "fault_domain": "kubernetes",
+          "claim_kind": "non_memory_restart",
+          "evidence_needed": [
+            "termination reason",
+            "probe failure event"
+          ]
+        },
+        {
+          "statement": "inventory-api exceeded its container memory limit and was terminated",
+          "fault_domain": "kubernetes",
+          "claim_kind": "memory_limit_termination",
+          "evidence_needed": [
+            "container termination reason",
+            "memory working set",
+            "container memory limit"
+          ]
+        }
+      ],
+      "next_action": {
+        "kind": "kubernetes.events",
+        "entity": "inventory-api",
+        "reason": "look for a probe failure event",
+        "window": {
+          "start": "2026-09-18T12:00:00Z",
+          "end": "2026-09-18T12:30:00Z"
+        }
+      },
+      "reason": "an exit-1 termination needs a driver before it is explained"
+    },
+    {
+      "hypotheses": [
+        {
+          "statement": "inventory-api is restarting because its liveness probe fails",
+          "fault_domain": "kubernetes",
+          "claim_kind": "non_memory_restart",
+          "evidence_needed": [
+            "termination reason",
+            "probe failure event"
+          ]
+        },
+        {
+          "statement": "inventory-api exceeded its container memory limit and was terminated",
+          "fault_domain": "kubernetes",
+          "claim_kind": "memory_limit_termination",
+          "evidence_needed": [
+            "container termination reason",
+            "memory working set",
+            "container memory limit"
+          ]
+        }
+      ],
+      "next_action": {
+        "kind": "metrics.query",
+        "entity": "inventory-api",
+        "reason": "check whether memory approached the limit",
+        "metric": "container_memory_working_set_bytes",
+        "window": {
+          "start": "2026-09-18T12:00:00Z",
+          "end": "2026-09-18T12:30:00Z"
+        },
+        "resolution": "60s"
+      },
+      "reason": "the memory hypothesis must be tested rather than assumed away"
+    },
+    {
+      "hypotheses": [
+        {
+          "statement": "inventory-api is restarting because its liveness probe fails",
+          "fault_domain": "kubernetes",
+          "claim_kind": "non_memory_restart",
+          "evidence_needed": [
+            "termination reason",
+            "probe failure event"
+          ]
+        },
+        {
+          "statement": "inventory-api exceeded its container memory limit and was terminated",
+          "fault_domain": "kubernetes",
+          "claim_kind": "memory_limit_termination",
+          "evidence_needed": [
+            "container termination reason",
+            "memory working set",
+            "container memory limit"
+          ]
+        }
+      ],
+      "next_action": {
+        "kind": "metrics.query",
+        "entity": "inventory-api",
+        "reason": "compare the working set against the configured limit",
+        "metric": "container_spec_memory_limit_bytes",
+        "window": {
+          "start": "2026-09-18T12:00:00Z",
+          "end": "2026-09-18T12:30:00Z"
+        },
+        "resolution": "60s"
+      },
+      "reason": "refuting the memory-limit hypothesis needs the limit"
+    },
+    {
+      "hypotheses": [
+        {
+          "statement": "inventory-api is restarting because its liveness probe fails",
+          "fault_domain": "kubernetes",
+          "claim_kind": "non_memory_restart",
+          "evidence_needed": [
+            "termination reason",
+            "probe failure event"
+          ]
+        },
+        {
+          "statement": "inventory-api exceeded its container memory limit and was terminated",
+          "fault_domain": "kubernetes",
+          "claim_kind": "memory_limit_termination",
+          "evidence_needed": [
+            "container termination reason",
+            "memory working set",
+            "container memory limit"
+          ]
+        }
+      ],
+      "reason": "exit code 1 plus repeated liveness probe failures explain the restarts; memory peaked far below the limit"
+    }
+  ],
+  "evidence": [
+    {
+      "action": {
+        "kind": "kubernetes.containers",
+        "entity": "inventory-api",
+        "reason": "read the recorded termination reason and exit code"
+      },
+      "response": {
+        "schema_version": "probe/v1",
+        "kind": "kubernetes.containers",
+        "entity": "inventory-api",
+        "status": "ok",
+        "completeness": "complete",
+        "retrieved_at": "2026-09-18T12:31:05Z",
+        "query": {
+          "datasource": "kubernetes",
+          "query": "pods -n lab -l app=inventory-api"
+        },
+        "digest": "sha256:13920bcbcd919123d15ff44f2af97f363e84afd0f107ec28c6706476eb7188d1",
+        "payload": {
+          "namespace": "lab",
+          "pods": [
+            {
+              "name": "inventory-api-6b9f7d54c-h4q2z",
+              "namespace": "lab",
+              "phase": "Running",
+              "node": "mini-vora",
+              "start_time": "2026-09-18T12:14:28Z",
+              "containers": [
+                {
+                  "name": "app",
+                  "ready": false,
+                  "restart_count": 5,
+                  "state": "running",
+                  "last_terminated_at": "2026-09-18T12:14:20Z",
+                  "last_terminated_reason": "Error",
+                  "last_exit_code": 1
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "action": {
+        "kind": "kubernetes.events",
+        "entity": "inventory-api",
+        "reason": "look for a probe failure event",
+        "window": {
+          "start": "2026-09-18T12:00:00Z",
+          "end": "2026-09-18T12:30:00Z"
+        }
+      },
+      "response": {
+        "schema_version": "probe/v1",
+        "kind": "kubernetes.events",
+        "entity": "inventory-api",
+        "status": "ok",
+        "completeness": "complete",
+        "retrieved_at": "2026-09-18T12:31:07Z",
+        "query": {
+          "datasource": "kubernetes",
+          "query": "events -n lab -l app=inventory-api"
+        },
+        "digest": "sha256:ff3959a88fc024dcb58145d48f03bc45b312115ec0dc6dc3b34d479124f14059",
+        "payload": {
+          "namespace": "lab",
+          "events": [
+            {
+              "type": "Warning",
+              "reason": "Unhealthy",
+              "message": "Liveness probe failed: Get \"http://10.1.2.31:8080/healthz\": dial tcp 10.1.2.31:8080: connect: connection refused",
+              "involved_object": "inventory-api-6b9f7d54c-h4q2z",
+              "count": 6,
+              "first_seen": "2026-09-18T12:13:50Z",
+              "last_seen": "2026-09-18T12:29:50Z"
+            },
+            {
+              "type": "Warning",
+              "reason": "BackOff",
+              "message": "Back-off restarting failed container app in pod inventory-api-6b9f7d54c-h4q2z",
+              "involved_object": "inventory-api-6b9f7d54c-h4q2z",
+              "count": 5,
+              "first_seen": "2026-09-18T12:14:29Z",
+              "last_seen": "2026-09-18T12:28:00Z"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "action": {
+        "kind": "metrics.query",
+        "entity": "inventory-api",
+        "reason": "check whether memory approached the limit",
+        "metric": "container_memory_working_set_bytes",
+        "window": {
+          "start": "2026-09-18T12:00:00Z",
+          "end": "2026-09-18T12:30:00Z"
+        },
+        "resolution": "60s"
+      },
+      "response": {
+        "schema_version": "probe/v1",
+        "kind": "metrics.query",
+        "entity": "inventory-api",
+        "status": "ok",
+        "completeness": "complete",
+        "retrieved_at": "2026-09-18T12:31:08Z",
+        "query": {
+          "datasource": "prometheus",
+          "query": "container_memory_working_set_bytes{service=\"inventory-api\"}",
+          "params": {
+            "metric": "container_memory_working_set_bytes"
+          },
+          "resolution": "60s"
+        },
+        "digest": "sha256:b4bd6ba6265ffdcde2ce34fb5bd04b18932a4c956d61a77bf75ad381a84354ff",
+        "payload": {
+          "metric": "container_memory_working_set_bytes",
+          "unit": "bytes",
+          "samples": [
+            {
+              "at": "2026-09-18T12:00:00Z",
+              "value": 100663296
+            },
+            {
+              "at": "2026-09-18T12:05:00Z",
+              "value": 106954752
+            },
+            {
+              "at": "2026-09-18T12:10:00Z",
+              "value": 103809024
+            },
+            {
+              "at": "2026-09-18T12:15:00Z",
+              "value": 105906176
+            },
+            {
+              "at": "2026-09-18T12:20:00Z",
+              "value": 102760448
+            },
+            {
+              "at": "2026-09-18T12:25:00Z",
+              "value": 108003328
+            },
+            {
+              "at": "2026-09-18T12:30:00Z",
+              "value": 104857600
+            }
+          ]
+        }
+      }
+    },
+    {
+      "action": {
+        "kind": "metrics.query",
+        "entity": "inventory-api",
+        "reason": "compare the working set against the configured limit",
+        "metric": "container_spec_memory_limit_bytes",
+        "window": {
+          "start": "2026-09-18T12:00:00Z",
+          "end": "2026-09-18T12:30:00Z"
+        },
+        "resolution": "60s"
+      },
+      "response": {
+        "schema_version": "probe/v1",
+        "kind": "metrics.query",
+        "entity": "inventory-api",
+        "status": "ok",
+        "completeness": "complete",
+        "retrieved_at": "2026-09-18T12:31:09Z",
+        "query": {
+          "datasource": "prometheus",
+          "query": "container_spec_memory_limit_bytes{service=\"inventory-api\"}",
+          "params": {
+            "metric": "container_spec_memory_limit_bytes"
+          },
+          "resolution": "60s"
+        },
+        "digest": "sha256:c25f983b28ffa09769b5f03aa94e2202865816c82eac853a2af98c94403a0795",
+        "payload": {
+          "metric": "container_spec_memory_limit_bytes",
+          "unit": "bytes",
+          "samples": [
+            {
+              "at": "2026-09-18T12:30:00Z",
+              "value": 536870912
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

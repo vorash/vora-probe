@@ -1,0 +1,27 @@
+{
+  "schema_version": "probe/v1",
+  "case": "misleading-deployment-correlation",
+  "notes": "The rollout completed 1m34s before the baseline was first exceeded, well inside the proximity bound, but query volume, memory and restarts are all flat. Proximity alone must not be promoted to causation, so the case must end inconclusive rather than naming the rollout.",
+  "expected": {
+    "fault_domain": "unknown",
+    "leading_claim": "unknown_cause",
+    "cause_asserted": false,
+    "allowed_claims": [
+      "unknown_cause"
+    ],
+    "forbidden_claims": [
+      "deployment_regression",
+      "memory_limit_termination",
+      "memory_leak",
+      "allocation_defect",
+      "resource_saturation",
+      "non_memory_restart"
+    ],
+    "required_observation_types": [
+      "k8s_deployment",
+      "metric",
+      "k8s_container_state"
+    ],
+    "recommendation_executed": false
+  }
+}

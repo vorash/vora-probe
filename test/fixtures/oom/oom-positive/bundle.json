@@ -1,0 +1,524 @@
+{
+  "schema_version": "probe/v1",
+  "case": "oom-positive",
+  "description": "payment-api is repeatedly OOMKilled. Working set rises to the container limit, is killed, and restarts, so the memory series is sawtooth rather than monotonic. Memory-limit termination is evidenced; a leak is not.",
+  "incident": {
+    "schema_version": "probe/v1",
+    "id": "INC-0001",
+    "environment": "lab",
+    "service": "payment-api",
+    "symptom": "payment-api pods restart repeatedly and callers see latency spikes",
+    "trigger": "manual",
+    "started_at": "2026-09-18T12:31:00Z",
+    "window": {
+      "start": "2026-09-18T12:00:00Z",
+      "end": "2026-09-18T12:30:00Z"
+    },
+    "status": "open"
+  },
+  "planner": [
+    {
+      "hypotheses": [
+        {
+          "statement": "payment-api exceeded its container memory limit and was terminated",
+          "fault_domain": "kubernetes",
+          "claim_kind": "memory_limit_termination",
+          "evidence_needed": [
+            "container termination reason",
+            "memory working set",
+            "container memory limit"
+          ]
+        },
+        {
+          "statement": "payment-api leaks memory across requests",
+          "fault_domain": "application",
+          "claim_kind": "memory_leak",
+          "evidence_needed": [
+            "sustained monotonic working-set growth"
+          ]
+        },
+        {
+          "statement": "payment-api is cpu saturated",
+          "fault_domain": "host",
+          "claim_kind": "resource_saturation",
+          "evidence_needed": [
+            "cpu usage ratio"
+          ]
+        }
+      ],
+      "next_action": {
+        "kind": "metrics.query",
+        "entity": "payment-api",
+        "reason": "test whether working set approaches the container limit before the restarts",
+        "metric": "container_memory_working_set_bytes",
+        "window": {
+          "start": "2026-09-18T12:00:00Z",
+          "end": "2026-09-18T12:30:00Z"
+        },
+        "resolution": "60s"
+      },
+      "reason": "start from memory usage because the symptom is restarts"
+    },
+    {
+      "hypotheses": [
+        {
+          "statement": "payment-api exceeded its container memory limit and was terminated",
+          "fault_domain": "kubernetes",
+          "claim_kind": "memory_limit_termination",
+          "evidence_needed": [
+            "container termination reason",
+            "memory working set",
+            "container memory limit"
+          ]
+        },
+        {
+          "statement": "payment-api leaks memory across requests",
+          "fault_domain": "application",
+          "claim_kind": "memory_leak",
+          "evidence_needed": [
+            "sustained monotonic working-set growth"
+          ]
+        },
+        {
+          "statement": "payment-api is cpu saturated",
+          "fault_domain": "host",
+          "claim_kind": "resource_saturation",
+          "evidence_needed": [
+            "cpu usage ratio"
+          ]
+        }
+      ],
+      "next_action": {
+        "kind": "kubernetes.containers",
+        "entity": "payment-api",
+        "reason": "read the recorded termination reason and exit code"
+      },
+      "reason": "the memory series is sawtooth, so check the termination history directly"
+    },
+    {
+      "hypotheses": [
+        {
+          "statement": "payment-api exceeded its container memory limit and was terminated",
+          "fault_domain": "kubernetes",
+          "claim_kind": "memory_limit_termination",
+          "evidence_needed": [
+            "container termination reason",
+            "memory working set",
+            "container memory limit"
+          ]
+        },
+        {
+          "statement": "payment-api leaks memory across requests",
+          "fault_domain": "application",
+          "claim_kind": "memory_leak",
+          "evidence_needed": [
+            "sustained monotonic working-set growth"
+          ]
+        },
+        {
+          "statement": "payment-api is cpu saturated",
+          "fault_domain": "host",
+          "claim_kind": "resource_saturation",
+          "evidence_needed": [
+            "cpu usage ratio"
+          ]
+        }
+      ],
+      "next_action": {
+        "kind": "kubernetes.events",
+        "entity": "payment-api",
+        "reason": "look for an out-of-memory event on the pod",
+        "window": {
+          "start": "2026-09-18T12:00:00Z",
+          "end": "2026-09-18T12:30:00Z"
+        }
+      },
+      "reason": "corroborate the termination reason with events"
+    },
+    {
+      "hypotheses": [
+        {
+          "statement": "payment-api exceeded its container memory limit and was terminated",
+          "fault_domain": "kubernetes",
+          "claim_kind": "memory_limit_termination",
+          "evidence_needed": [
+            "container termination reason",
+            "memory working set",
+            "container memory limit"
+          ]
+        },
+        {
+          "statement": "payment-api leaks memory across requests",
+          "fault_domain": "application",
+          "claim_kind": "memory_leak",
+          "evidence_needed": [
+            "sustained monotonic working-set growth"
+          ]
+        },
+        {
+          "statement": "payment-api is cpu saturated",
+          "fault_domain": "host",
+          "claim_kind": "resource_saturation",
+          "evidence_needed": [
+            "cpu usage ratio"
+          ]
+        }
+      ],
+      "next_action": {
+        "kind": "metrics.query",
+        "entity": "payment-api",
+        "reason": "confirm the configured limit that the working set is approaching",
+        "metric": "container_spec_memory_limit_bytes",
+        "window": {
+          "start": "2026-09-18T12:00:00Z",
+          "end": "2026-09-18T12:30:00Z"
+        },
+        "resolution": "60s"
+      },
+      "reason": "a limit kill claim needs the limit itself"
+    },
+    {
+      "hypotheses": [
+        {
+          "statement": "payment-api exceeded its container memory limit and was terminated",
+          "fault_domain": "kubernetes",
+          "claim_kind": "memory_limit_termination",
+          "evidence_needed": [
+            "container termination reason",
+            "memory working set",
+            "container memory limit"
+          ]
+        },
+        {
+          "statement": "payment-api leaks memory across requests",
+          "fault_domain": "application",
+          "claim_kind": "memory_leak",
+          "evidence_needed": [
+            "sustained monotonic working-set growth"
+          ]
+        },
+        {
+          "statement": "payment-api is cpu saturated",
+          "fault_domain": "host",
+          "claim_kind": "resource_saturation",
+          "evidence_needed": [
+            "cpu usage ratio"
+          ]
+        }
+      ],
+      "next_action": {
+        "kind": "metrics.query",
+        "entity": "payment-api",
+        "reason": "rule out cpu saturation as the restart driver",
+        "metric": "container_cpu_usage_ratio",
+        "window": {
+          "start": "2026-09-18T12:00:00Z",
+          "end": "2026-09-18T12:30:00Z"
+        },
+        "resolution": "60s"
+      },
+      "reason": "eliminate the competing saturation hypothesis before concluding"
+    },
+    {
+      "hypotheses": [
+        {
+          "statement": "payment-api exceeded its container memory limit and was terminated",
+          "fault_domain": "kubernetes",
+          "claim_kind": "memory_limit_termination",
+          "evidence_needed": [
+            "container termination reason",
+            "memory working set",
+            "container memory limit"
+          ]
+        },
+        {
+          "statement": "payment-api leaks memory across requests",
+          "fault_domain": "application",
+          "claim_kind": "memory_leak",
+          "evidence_needed": [
+            "sustained monotonic working-set growth"
+          ]
+        },
+        {
+          "statement": "payment-api is cpu saturated",
+          "fault_domain": "host",
+          "claim_kind": "resource_saturation",
+          "evidence_needed": [
+            "cpu usage ratio"
+          ]
+        }
+      ],
+      "reason": "termination reason, limit and working set agree; cpu is normal; the memory series is sawtooth so no leak is evidenced"
+    }
+  ],
+  "evidence": [
+    {
+      "action": {
+        "kind": "metrics.query",
+        "entity": "payment-api",
+        "reason": "test whether working set approaches the container limit before the restarts",
+        "metric": "container_memory_working_set_bytes",
+        "window": {
+          "start": "2026-09-18T12:00:00Z",
+          "end": "2026-09-18T12:30:00Z"
+        },
+        "resolution": "60s"
+      },
+      "response": {
+        "schema_version": "probe/v1",
+        "kind": "metrics.query",
+        "entity": "payment-api",
+        "status": "ok",
+        "completeness": "complete",
+        "retrieved_at": "2026-09-18T12:31:05Z",
+        "query": {
+          "datasource": "prometheus",
+          "query": "container_memory_working_set_bytes{service=\"payment-api\"}",
+          "params": {
+            "metric": "container_memory_working_set_bytes"
+          },
+          "resolution": "60s"
+        },
+        "digest": "sha256:dd0d72a39cdf7a6497fab075bd4a06c4796acc2fb1cb06fae14df7c9f38cfb8e",
+        "payload": {
+          "metric": "container_memory_working_set_bytes",
+          "unit": "bytes",
+          "samples": [
+            {
+              "at": "2026-09-18T12:00:00Z",
+              "value": 188743680
+            },
+            {
+              "at": "2026-09-18T12:05:00Z",
+              "value": 204472320
+            },
+            {
+              "at": "2026-09-18T12:10:00Z",
+              "value": 251658240
+            },
+            {
+              "at": "2026-09-18T12:15:00Z",
+              "value": 429916160
+            },
+            {
+              "at": "2026-09-18T12:20:00Z",
+              "value": 553648128
+            },
+            {
+              "at": "2026-09-18T12:25:00Z",
+              "value": 190840832
+            },
+            {
+              "at": "2026-09-18T12:30:00Z",
+              "value": 209715200
+            }
+          ]
+        }
+      }
+    },
+    {
+      "action": {
+        "kind": "kubernetes.containers",
+        "entity": "payment-api",
+        "reason": "read the recorded termination reason and exit code"
+      },
+      "response": {
+        "schema_version": "probe/v1",
+        "kind": "kubernetes.containers",
+        "entity": "payment-api",
+        "status": "ok",
+        "completeness": "complete",
+        "retrieved_at": "2026-09-18T12:31:07Z",
+        "query": {
+          "datasource": "kubernetes",
+          "query": "pods -n lab -l app=payment-api"
+        },
+        "digest": "sha256:3b67845706e2746a7561a3fce1d7b6aae8ed033c018a429343142889dea64ef0",
+        "payload": {
+          "namespace": "lab",
+          "pods": [
+            {
+              "name": "payment-api-5f8c9d7b4-x2lkq",
+              "namespace": "lab",
+              "phase": "Running",
+              "node": "mini-vora",
+              "start_time": "2026-09-18T11:47:12Z",
+              "containers": [
+                {
+                  "name": "app",
+                  "ready": false,
+                  "restart_count": 7,
+                  "state": "waiting",
+                  "reason": "CrashLoopBackOff",
+                  "last_terminated_at": "2026-09-18T12:21:04Z",
+                  "last_terminated_reason": "OOMKilled",
+                  "last_exit_code": 137
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "action": {
+        "kind": "kubernetes.events",
+        "entity": "payment-api",
+        "reason": "look for an out-of-memory event on the pod",
+        "window": {
+          "start": "2026-09-18T12:00:00Z",
+          "end": "2026-09-18T12:30:00Z"
+        }
+      },
+      "response": {
+        "schema_version": "probe/v1",
+        "kind": "kubernetes.events",
+        "entity": "payment-api",
+        "status": "ok",
+        "completeness": "complete",
+        "retrieved_at": "2026-09-18T12:31:09Z",
+        "query": {
+          "datasource": "kubernetes",
+          "query": "events -n lab --field-selector involvedObject.name=payment-api-5f8c9d7b4-x2lkq"
+        },
+        "digest": "sha256:0b99b43a0a6d159c0cac9281551be78772dfc8be599aaf92705b2e48348eab7d",
+        "payload": {
+          "namespace": "lab",
+          "events": [
+            {
+              "type": "Warning",
+              "reason": "OOMKilling",
+              "message": "Container app in pod payment-api-5f8c9d7b4-x2lkq was killed because it exceeded its memory limit",
+              "involved_object": "payment-api-5f8c9d7b4-x2lkq",
+              "count": 3,
+              "first_seen": "2026-09-18T12:20:10Z",
+              "last_seen": "2026-09-18T12:21:05Z"
+            },
+            {
+              "type": "Warning",
+              "reason": "BackOff",
+              "message": "Back-off restarting failed container app in pod payment-api-5f8c9d7b4-x2lkq",
+              "involved_object": "payment-api-5f8c9d7b4-x2lkq",
+              "count": 5,
+              "first_seen": "2026-09-18T12:21:06Z",
+              "last_seen": "2026-09-18T12:29:40Z"
+            },
+            {
+              "type": "Warning",
+              "reason": "Unhealthy",
+              "message": "Readiness probe failed: connection refused",
+              "involved_object": "payment-api-5f8c9d7b4-x2lkq",
+              "count": 4,
+              "first_seen": "2026-09-18T12:21:10Z",
+              "last_seen": "2026-09-18T12:29:10Z"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "action": {
+        "kind": "metrics.query",
+        "entity": "payment-api",
+        "reason": "confirm the configured limit that the working set is approaching",
+        "metric": "container_spec_memory_limit_bytes",
+        "window": {
+          "start": "2026-09-18T12:00:00Z",
+          "end": "2026-09-18T12:30:00Z"
+        },
+        "resolution": "60s"
+      },
+      "response": {
+        "schema_version": "probe/v1",
+        "kind": "metrics.query",
+        "entity": "payment-api",
+        "status": "ok",
+        "completeness": "complete",
+        "retrieved_at": "2026-09-18T12:31:11Z",
+        "query": {
+          "datasource": "prometheus",
+          "query": "container_spec_memory_limit_bytes{service=\"payment-api\"}",
+          "params": {
+            "metric": "container_spec_memory_limit_bytes"
+          },
+          "resolution": "60s"
+        },
+        "digest": "sha256:c25f983b28ffa09769b5f03aa94e2202865816c82eac853a2af98c94403a0795",
+        "payload": {
+          "metric": "container_spec_memory_limit_bytes",
+          "unit": "bytes",
+          "samples": [
+            {
+              "at": "2026-09-18T12:30:00Z",
+              "value": 536870912
+            }
+          ]
+        }
+      }
+    },
+    {
+      "action": {
+        "kind": "metrics.query",
+        "entity": "payment-api",
+        "reason": "rule out cpu saturation as the restart driver",
+        "metric": "container_cpu_usage_ratio",
+        "window": {
+          "start": "2026-09-18T12:00:00Z",
+          "end": "2026-09-18T12:30:00Z"
+        },
+        "resolution": "60s"
+      },
+      "response": {
+        "schema_version": "probe/v1",
+        "kind": "metrics.query",
+        "entity": "payment-api",
+        "status": "ok",
+        "completeness": "complete",
+        "retrieved_at": "2026-09-18T12:31:13Z",
+        "query": {
+          "datasource": "prometheus",
+          "query": "container_cpu_usage_ratio{service=\"payment-api\"}",
+          "params": {
+            "metric": "container_cpu_usage_ratio"
+          },
+          "resolution": "60s"
+        },
+        "digest": "sha256:a868d002f2d3abc4394421d6b430478d81894073290f08a3f57c3ff9c3f6c0ef",
+        "payload": {
+          "metric": "container_cpu_usage_ratio",
+          "unit": "ratio",
+          "samples": [
+            {
+              "at": "2026-09-18T12:00:00Z",
+              "value": 0.21
+            },
+            {
+              "at": "2026-09-18T12:05:00Z",
+              "value": 0.24
+            },
+            {
+              "at": "2026-09-18T12:10:00Z",
+              "value": 0.19
+            },
+            {
+              "at": "2026-09-18T12:15:00Z",
+              "value": 0.23
+            },
+            {
+              "at": "2026-09-18T12:20:00Z",
+              "value": 0.26
+            },
+            {
+              "at": "2026-09-18T12:25:00Z",
+              "value": 0.22
+            },
+            {
+              "at": "2026-09-18T12:30:00Z",
+              "value": 0.20
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

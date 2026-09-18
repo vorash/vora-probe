@@ -1,0 +1,26 @@
+{
+  "schema_version": "probe/v1",
+  "case": "non-oom-restart",
+  "notes": "Exit code 1 with repeated liveness probe failures explains the restarts. Peak working set is 103 MiB against a 512 MiB limit, so the memory-limit hypothesis must be refuted rather than reported.",
+  "expected": {
+    "fault_domain": "kubernetes",
+    "leading_claim": "non_memory_restart",
+    "cause_asserted": true,
+    "allowed_claims": [
+      "non_memory_restart"
+    ],
+    "forbidden_claims": [
+      "memory_limit_termination",
+      "memory_leak",
+      "allocation_defect",
+      "deployment_regression",
+      "resource_saturation"
+    ],
+    "required_observation_types": [
+      "k8s_container_state",
+      "k8s_event",
+      "metric"
+    ],
+    "recommendation_executed": false
+  }
+}
