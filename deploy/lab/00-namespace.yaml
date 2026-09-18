@@ -1,0 +1,39 @@
+# The lab namespace and its hard cap.
+#
+# Everything in step 5 lives here and nowhere else. The quota is the guard that
+# keeps a deliberately OOM-tolerant workload from pressuring the shared host,
+# which also runs the Vora runner.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: probe-lab
+  labels:
+    app.kubernetes.io/part-of: vora-probe-lab
+---
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: probe-lab-cap
+  namespace: probe-lab
+spec:
+  hard:
+    requests.cpu: "2"
+    requests.memory: 1Gi
+    limits.cpu: "3"
+    limits.memory: 2Gi
+    pods: "12"
+---
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: probe-lab-defaults
+  namespace: probe-lab
+spec:
+  limits:
+    - type: Container
+      defaultRequest:
+        cpu: 50m
+        memory: 32Mi
+      default:
+        cpu: 500m
+        memory: 256Mi

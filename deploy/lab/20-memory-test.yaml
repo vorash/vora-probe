@@ -1,0 +1,106 @@
+# The lab's workloads.
+#
+# memory-test is the only service the investigation may ask about. unrelated-api
+# exists solely so a rollout can be placed near an impact without being the
+# cause — the misleading-correlation case — and carries no traffic.
+#
+# The image is built locally and imported into the node's containerd (see
+# build-image.sh); there is no registry in this loop.
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: memory-test
+  namespace: probe-lab
+  labels:
+    app: memory-test
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: memory-test
+  template:
+    metadata:
+      labels:
+        app: memory-test
+    spec:
+      containers:
+        - name: memory-test
+          image: vora-probe-lab-memorytest:dev
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+          resources:
+            requests:
+              cpu: 50m
+              memory: 32Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 5
+            failureThreshold: 2
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            periodSeconds: 5
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: memory-test
+  namespace: probe-lab
+  labels:
+    app: memory-test
+spec:
+  selector:
+    app: memory-test
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: unrelated-api
+  namespace: probe-lab
+  labels:
+    app: unrelated-api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: unrelated-api
+  template:
+    metadata:
+      labels:
+        app: unrelated-api
+        # Changing this label is the rollout the misleading case places near an
+        # impact. It is a real change to a real object and still not a cause.
+        revision: "1"
+    spec:
+      containers:
+        - name: unrelated-api
+          image: vora-probe-lab-memorytest:dev
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+          resources:
+            requests:
+              cpu: 20m
+              memory: 24Mi
+            limits:
+              cpu: 200m
+              memory: 96Mi
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            periodSeconds: 5

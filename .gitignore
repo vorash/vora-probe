@@ -13,3 +13,6 @@
 deploy/lab/*.local.yaml
 
 .DS_Store
+
+# Lab workload build output
+/deploy/lab/memory-test/memory-test
