@@ -12,7 +12,7 @@ The work is planned in seven steps, each landing as one reviewed pull request:
 | --- | --- | --- |
 | 1 | `feat/contracts-and-fixtures` | Domain records, claims policy, deterministic derivations, frozen OOM fixtures with hidden ground truth |
 | 2 | `feat/offline-vertical-slice` | CLI, bounded step protocol, journal, fixture gateway, planner, evidence-linked reports |
-| 3 | `feat/model-comparison` | Baseline LLM and Jev evidence-relation evaluators, benchmark harness |
+| 3 | `feat/model-comparison` | Baseline LLM and Jev evidence-relation evaluators, comparison harness |
 | 4 | `feat/vora-integration` | Immutable worker image, fixed-command exec over the Vora public API |
 | 5 | `feat/isolated-live-lab` | Disposable bounded Kubernetes lab with Prometheus and Grafana |
 | 6 | `feat/live-evidence-acceptance` | Live evidence collection, acceptance runs and comparison table |
@@ -29,9 +29,14 @@ Steps 1 and 2 are implemented and run entirely offline:
 - **Step 2** — the bounded step protocol, an append-only journal, the fixture
   gateway, the recorded planner, and evidence-linked JSON and Markdown reports.
   See `docs/architecture.md`.
+- **Step 3** — three evidence-relation arms (deterministic rules, an
+  OpenAI-compatible baseline, and Jev) behind one port, a fixed-input
+  classification suite with development and held-out splits, and a comparison
+  report of counts and spreads. Arms without a configured endpoint are reported
+  as blocked, never substituted.
 
-Steps 3 onwards land as their own reviewed pull requests and are gated on
-operator-supplied infrastructure and credentials.
+Steps 4 onwards land as their own reviewed pull requests and are gated on
+operator-supplied infrastructure.
 
 ## Requirements
 
@@ -69,7 +74,7 @@ The four fixtures pin that, and each one fails a specific overclaim:
 
 ## Documentation
 
-- `docs/architecture.md` — trust boundary, step protocol, limits and benchmark interpretation.
+- `docs/architecture.md` — trust boundary, step protocol, the evaluator port, limits and how to read a comparison.
 - `docs/claims-policy.md` — what Probe may assert, and the evidence each assertion needs.
 - `test/fixtures/oom/README.md` — the fixture format and how to re-freeze a change.
 

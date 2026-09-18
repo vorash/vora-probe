@@ -1,0 +1,101 @@
+{
+  "schema_version": "probe/v1",
+  "id": "exit-one-with-probe-failure",
+  "split": "held-out",
+  "rationale": "The container exits with an application error while its liveness probe keeps failing, which is what the hypothesis names.",
+  "entity": "inventory-api",
+  "hypothesis": {
+    "statement": "inventory-api is restarting because its liveness probe fails",
+    "fault_domain": "kubernetes",
+    "claim_kind": "non_memory_restart"
+  },
+  "evidence": [
+    {
+      "action": {
+        "kind": "kubernetes.containers",
+        "entity": "inventory-api",
+        "reason": "read the termination history"
+      },
+      "response": {
+        "schema_version": "probe/v1",
+        "kind": "kubernetes.containers",
+        "entity": "inventory-api",
+        "status": "ok",
+        "completeness": "complete",
+        "retrieved_at": "2026-09-18T12:31:07Z",
+        "query": {
+          "datasource": "kubernetes",
+          "query": "pods -n lab -l app=inventory-api"
+        },
+        "digest": "sha256:6b8f5304ef2656199ef3e37bb700d455f438f9f465547ccade4a029c046fbcd0",
+        "payload": {
+          "namespace": "lab",
+          "pods": [
+            {
+              "name": "inventory-api-5f8c9d7b4-x2lkq",
+              "namespace": "lab",
+              "phase": "Running",
+              "node": "mini-vora",
+              "start_time": "2026-09-18T11:47:12Z",
+              "containers": [
+                {
+                  "name": "app",
+                  "ready": false,
+                  "restart_count": 5,
+                  "state": "running",
+                  "last_terminated_at": "2026-09-18T12:14:20Z",
+                  "last_terminated_reason": "Error",
+                  "last_exit_code": 1
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "action": {
+        "kind": "kubernetes.events",
+        "entity": "inventory-api",
+        "reason": "look for a recorded event",
+        "window": {
+          "start": "2026-09-18T12:00:00Z",
+          "end": "2026-09-18T12:30:00Z"
+        }
+      },
+      "response": {
+        "schema_version": "probe/v1",
+        "kind": "kubernetes.events",
+        "entity": "inventory-api",
+        "status": "ok",
+        "completeness": "complete",
+        "retrieved_at": "2026-09-18T12:31:09Z",
+        "query": {
+          "datasource": "kubernetes",
+          "query": "events -n lab -l app=inventory-api"
+        },
+        "digest": "sha256:dee4386a2a192b3beac896b1441843c409c2856b61c6288aa02424931bb2dc2b",
+        "payload": {
+          "namespace": "lab",
+          "events": [
+            {
+              "type": "Warning",
+              "reason": "Unhealthy",
+              "message": "Liveness probe failed: Get \"http://10.1.2.31:8080/healthz\": connect: connection refused",
+              "involved_object": "inventory-api-6b9f7d54c-h4q2z",
+              "count": 6,
+              "first_seen": "2026-09-18T12:13:50Z",
+              "last_seen": "2026-09-18T12:29:50Z"
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "target": "OBS-0001",
+  "expected": "supports",
+  "forbidden": [
+    "contradicts",
+    "insufficient_context"
+  ]
+}

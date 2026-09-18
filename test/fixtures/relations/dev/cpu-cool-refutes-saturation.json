@@ -1,0 +1,83 @@
+{
+  "schema_version": "probe/v1",
+  "id": "cpu-cool-refutes-saturation",
+  "split": "dev",
+  "rationale": "CPU peaked at a quarter of a core over the window, which is not saturation.",
+  "entity": "payment-api",
+  "hypothesis": {
+    "statement": "payment-api is cpu saturated",
+    "fault_domain": "host",
+    "claim_kind": "resource_saturation"
+  },
+  "evidence": [
+    {
+      "action": {
+        "kind": "metrics.query",
+        "entity": "payment-api",
+        "reason": "evidence for the classification case",
+        "metric": "container_cpu_usage_ratio",
+        "window": {
+          "start": "2026-09-18T12:00:00Z",
+          "end": "2026-09-18T12:30:00Z"
+        },
+        "resolution": "60s"
+      },
+      "response": {
+        "schema_version": "probe/v1",
+        "kind": "metrics.query",
+        "entity": "payment-api",
+        "status": "ok",
+        "completeness": "complete",
+        "retrieved_at": "2026-09-18T12:31:05Z",
+        "query": {
+          "datasource": "prometheus",
+          "query": "container_cpu_usage_ratio{service=\"payment-api\"}",
+          "params": {
+            "metric": "container_cpu_usage_ratio"
+          },
+          "resolution": "60s"
+        },
+        "digest": "sha256:4c56a46dcfa53c5ee7c3bf240b47c12e07a7f02d0b4b8ab5b68737f41295c064",
+        "payload": {
+          "metric": "container_cpu_usage_ratio",
+          "unit": "unit",
+          "samples": [
+            {
+              "at": "2026-09-18T12:00:00Z",
+              "value": 0.21
+            },
+            {
+              "at": "2026-09-18T12:05:00Z",
+              "value": 0.24
+            },
+            {
+              "at": "2026-09-18T12:10:00Z",
+              "value": 0.19
+            },
+            {
+              "at": "2026-09-18T12:15:00Z",
+              "value": 0.23
+            },
+            {
+              "at": "2026-09-18T12:20:00Z",
+              "value": 0.26
+            },
+            {
+              "at": "2026-09-18T12:25:00Z",
+              "value": 0.22
+            },
+            {
+              "at": "2026-09-18T12:30:00Z",
+              "value": 0.2
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "target": "OBS-0001",
+  "expected": "contradicts",
+  "forbidden": [
+    "supports"
+  ]
+}

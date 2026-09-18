@@ -2,12 +2,18 @@ package investigation
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
 
 	"github.com/vorash/vora-probe/internal/gateway"
 )
+
+// errBudgetExhausted ends the run without failing it: running out of budget is an
+// outcome, and the report says so rather than presenting a partial investigation
+// as a conclusion.
+var errBudgetExhausted = errors.New("model call budget exhausted while evaluating evidence")
 
 // Engine is the transition function of an investigation. It performs no I/O: it
 // consumes the state envelope and one pending result, and returns exactly one
@@ -18,7 +24,18 @@ import (
 type Engine struct {
 	Policy gateway.Policy
 	Claims ClaimPolicy
-	Now    func() time.Time
+	// Relations is the arm that labels evidence against hypotheses. It defaults
+	// to the deterministic rules, so a caller that does not choose an arm gets
+	// the reviewed one.
+	Relations RelationEvaluator
+	Now       func() time.Time
+}
+
+func (e *Engine) relations() RelationEvaluator {
+	if e.Relations != nil {
+		return e.Relations
+	}
+	return DeterministicEvaluator{Policy: e.Claims}
 }
 
 // state carries the envelope and its ID counters together, so that every exit
@@ -26,6 +43,17 @@ type Engine struct {
 type state struct {
 	env StepEnvelope
 	ids *IDGen
+	// stale holds hypotheses the planner revised in this step. Their evidence
+	// labels are no longer answers to the current question, so they are dropped
+	// rather than kept.
+	stale map[string]bool
+}
+
+func (s *state) markStale(hypothesisID string) {
+	if s.stale == nil {
+		s.stale = map[string]bool{}
+	}
+	s.stale[hypothesisID] = true
 }
 
 func (s *state) result(kind, reason string) StepResult {
@@ -72,12 +100,18 @@ func (e *Engine) Step(input WorkerInput) (StepResult, error) {
 	case input.Pending == nil:
 	case input.Pending.Kind == PendingInfra:
 		if err := e.consumeInfra(s, input.Pending); err != nil {
+			if errors.Is(err, errBudgetExhausted) {
+				return e.finish(s, RunBudgetExhausted, err.Error())
+			}
 			return e.finish(s, RunFailed, err.Error())
 		}
 		consumed = "infra"
 	case input.Pending.Kind == PendingModel:
 		done, pending, err := e.consumeModel(s, input.Pending)
 		if err != nil {
+			if errors.Is(err, errBudgetExhausted) {
+				return e.finish(s, RunBudgetExhausted, err.Error())
+			}
 			return StepResult{}, err
 		}
 		if done {
@@ -144,26 +178,96 @@ func (e *Engine) consumeInfra(s *state, pending *Pending) error {
 		return nil
 	}
 	s.env.Observations = append(s.env.Observations, obs)
-	e.reassess(s)
-	return nil
+	return e.reassess(s)
 }
 
 // reassess recomputes facts and relations for the whole run. Recomputing rather
 // than appending keeps the relation set a pure function of the evidence.
-func (e *Engine) reassess(s *state) {
+//
+// An arm that fails fails the run. Substituting another arm, or dropping the
+// relations and continuing, would turn "this arm did not work" into a result that
+// looks like a finding.
+func (e *Engine) reassess(s *state) error {
 	byID := make(map[string]Observation, len(s.env.Observations))
 	for _, o := range s.env.Observations {
 		byID[o.ID] = o
 	}
 	facts := BuildFacts(s.env.Incident.Service, s.env.Observations)
+	arm := e.relations()
 
-	s.env.Relations = nil
+	// Keep the labels that still answer the current question: same arm, same
+	// version, hypothesis still live and unrevised, evidence still retained.
+	// Everything else is re-asked. Re-labelling evidence that is already
+	// labelled would multiply a model arm's cost by the number of reassessments.
+	alive := make(map[string]bool, len(s.env.Hypotheses))
 	for _, h := range s.env.Hypotheses {
-		s.env.Relations = append(s.env.Relations, EvaluateRelations(s.ids, h, facts, byID, e.Claims, e.now())...)
+		alive[h.ID] = true
+	}
+	kept := make([]Relation, 0, len(s.env.Relations))
+	labelled := map[string]map[string]bool{}
+	for _, r := range s.env.Relations {
+		if _, ok := byID[r.Observation]; !ok {
+			continue
+		}
+		if !alive[r.Hypothesis] || s.stale[r.Hypothesis] {
+			continue
+		}
+		if string(r.Evaluator) != arm.Arm() || r.PolicyVersion != arm.ArmVersion() {
+			continue
+		}
+		kept = append(kept, r)
+		if labelled[r.Hypothesis] == nil {
+			labelled[r.Hypothesis] = map[string]bool{}
+		}
+		labelled[r.Hypothesis][r.Observation] = true
+	}
+	s.env.Relations = kept
+	s.stale = nil
+
+	for _, h := range s.env.Hypotheses {
+		pending := make(map[string]Observation)
+		for id, o := range byID {
+			if !labelled[h.ID][id] {
+				pending[id] = o
+			}
+		}
+		if len(pending) == 0 {
+			continue
+		}
+		drafts, calls, err := arm.Label(h, facts, pending)
+		for _, call := range calls {
+			if call.Remote {
+				s.env.Run.Used.ModelCalls++
+			}
+		}
+		s.env.EvaluatorCalls = append(s.env.EvaluatorCalls, calls...)
+		if err != nil {
+			return fmt.Errorf("%s arm failed on %s: %w", arm.Arm(), h.ID, err)
+		}
+		if s.env.Run.Used.ModelCalls > s.env.Run.Budgets.MaxModelCalls {
+			return fmt.Errorf("%w: %d of %d used", errBudgetExhausted,
+				s.env.Run.Used.ModelCalls, s.env.Run.Budgets.MaxModelCalls)
+		}
+		for _, d := range drafts {
+			if _, ok := byID[d.Observation]; !ok {
+				return fmt.Errorf("%s arm labelled %q, which is not retained evidence", arm.Arm(), d.Observation)
+			}
+			s.env.Relations = append(s.env.Relations, Relation{
+				SchemaVersion: gateway.SchemaVersion,
+				ID:            s.ids.Next(PrefixRelation),
+				Observation:   d.Observation,
+				Hypothesis:    h.ID,
+				Relationship:  d.Relationship,
+				Reason:        d.Reason,
+				Evaluator:     Evaluator(arm.Arm()),
+				PolicyVersion: arm.ArmVersion(),
+			})
+		}
 	}
 	for i := range s.env.Hypotheses {
 		s.env.Hypotheses[i].Status = statusFor(s.env.Hypotheses[i], s.env.Relations)
 	}
+	return nil
 }
 
 // consumeModel validates a planner turn and folds it into the state. It returns
@@ -185,6 +289,12 @@ func (e *Engine) consumeModel(s *state, pending *Pending) (bool, *gateway.Action
 
 	for i, spec := range response.Hypotheses {
 		if i < len(s.env.Hypotheses) {
+			existing := s.env.Hypotheses[i]
+			if existing.ClaimKind != spec.ClaimKind || existing.FaultDomain != spec.FaultDomain {
+				// The question changed, so the old labels are answers to a
+				// different question and must not be carried over.
+				s.markStale(existing.ID)
+			}
 			// Keeping the existing ID is what lets relations survive a revision.
 			s.env.Hypotheses[i].Statement = spec.Statement
 			s.env.Hypotheses[i].FaultDomain = spec.FaultDomain
@@ -194,7 +304,9 @@ func (e *Engine) consumeModel(s *state, pending *Pending) (bool, *gateway.Action
 		}
 		s.env.Hypotheses = append(s.env.Hypotheses, HypothesisFromSpec(s.ids, spec))
 	}
-	e.reassess(s)
+	if err := e.reassess(s); err != nil {
+		return false, nil, err
+	}
 
 	if response.NextAction == nil {
 		e.decide(s, OutcomeStop, response.Reason, "")

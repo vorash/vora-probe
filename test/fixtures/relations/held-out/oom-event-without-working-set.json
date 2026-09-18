@@ -1,0 +1,57 @@
+{
+  "schema_version": "probe/v1",
+  "id": "oom-event-without-working-set",
+  "split": "held-out",
+  "rationale": "The out-of-memory event itself bears on the hypothesis, even though the working-set series that would corroborate it was never collected. The label and the claim are different questions.",
+  "entity": "payment-api",
+  "hypothesis": {
+    "statement": "payment-api exceeded its container memory limit and was terminated",
+    "fault_domain": "kubernetes",
+    "claim_kind": "memory_limit_termination"
+  },
+  "evidence": [
+    {
+      "action": {
+        "kind": "kubernetes.events",
+        "entity": "payment-api",
+        "reason": "look for a recorded event",
+        "window": {
+          "start": "2026-09-18T12:00:00Z",
+          "end": "2026-09-18T12:30:00Z"
+        }
+      },
+      "response": {
+        "schema_version": "probe/v1",
+        "kind": "kubernetes.events",
+        "entity": "payment-api",
+        "status": "ok",
+        "completeness": "complete",
+        "retrieved_at": "2026-09-18T12:31:09Z",
+        "query": {
+          "datasource": "kubernetes",
+          "query": "events -n lab -l app=payment-api"
+        },
+        "digest": "sha256:65138fd665e1ef7683a213228e8d1d3270e8807812a8cfe642dc06b99d7805cc",
+        "payload": {
+          "namespace": "lab",
+          "events": [
+            {
+              "type": "Warning",
+              "reason": "OOMKilling",
+              "message": "Container app in pod payment-api-5f8c9d7b4-x2lkq was killed because it exceeded its memory limit",
+              "involved_object": "payment-api-5f8c9d7b4-x2lkq",
+              "count": 3,
+              "first_seen": "2026-09-18T12:20:10Z",
+              "last_seen": "2026-09-18T12:21:05Z"
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "target": "OBS-0001",
+  "expected": "supports",
+  "forbidden": [
+    "contradicts"
+  ]
+}

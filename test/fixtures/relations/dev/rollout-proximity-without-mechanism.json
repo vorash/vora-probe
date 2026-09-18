@@ -1,0 +1,116 @@
+{
+  "schema_version": "probe/v1",
+  "id": "rollout-proximity-without-mechanism",
+  "split": "dev",
+  "rationale": "A rollout completed shortly before the impact, but nothing shows how it produced the impact. Proximity is not a mechanism.",
+  "entity": "checkout-api",
+  "hypothesis": {
+    "statement": "the checkout-api rollout caused the latency regression",
+    "fault_domain": "application",
+    "claim_kind": "deployment_regression"
+  },
+  "evidence": [
+    {
+      "action": {
+        "kind": "kubernetes.deployments",
+        "entity": "checkout-api",
+        "reason": "establish the rollout time"
+      },
+      "response": {
+        "schema_version": "probe/v1",
+        "kind": "kubernetes.deployments",
+        "entity": "checkout-api",
+        "status": "ok",
+        "completeness": "complete",
+        "retrieved_at": "2026-09-18T12:31:05Z",
+        "query": {
+          "datasource": "kubernetes",
+          "query": "deployments -n lab -l app=checkout-api"
+        },
+        "digest": "sha256:35d6cfa872ce9b42d9b646a0ec9e7c808a0ee37afcc771955d19d4256459efbc",
+        "payload": {
+          "namespace": "lab",
+          "deployments": [
+            {
+              "name": "checkout-api",
+              "namespace": "lab",
+              "image": "checkout-api:5f87b",
+              "replicas": 4,
+              "available_replicas": 4,
+              "rollout_completed_at": "2026-09-18T12:12:26Z"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "action": {
+        "kind": "metrics.query",
+        "entity": "checkout-api",
+        "reason": "evidence for the classification case",
+        "metric": "request_latency_p99_seconds",
+        "window": {
+          "start": "2026-09-18T12:00:00Z",
+          "end": "2026-09-18T12:30:00Z"
+        },
+        "resolution": "60s"
+      },
+      "response": {
+        "schema_version": "probe/v1",
+        "kind": "metrics.query",
+        "entity": "checkout-api",
+        "status": "ok",
+        "completeness": "complete",
+        "retrieved_at": "2026-09-18T12:31:05Z",
+        "query": {
+          "datasource": "prometheus",
+          "query": "request_latency_p99_seconds{service=\"checkout-api\"}",
+          "params": {
+            "metric": "request_latency_p99_seconds"
+          },
+          "resolution": "60s"
+        },
+        "digest": "sha256:78977080aeac0ba8f5243a715d13b911640c47b20934f3b77e37eed4e4bb8220",
+        "payload": {
+          "metric": "request_latency_p99_seconds",
+          "unit": "unit",
+          "samples": [
+            {
+              "at": "2026-09-18T12:00:00Z",
+              "value": 0.22
+            },
+            {
+              "at": "2026-09-18T12:05:00Z",
+              "value": 0.24
+            },
+            {
+              "at": "2026-09-18T12:10:00Z",
+              "value": 0.23
+            },
+            {
+              "at": "2026-09-18T12:15:00Z",
+              "value": 1.9
+            },
+            {
+              "at": "2026-09-18T12:20:00Z",
+              "value": 3.8
+            },
+            {
+              "at": "2026-09-18T12:25:00Z",
+              "value": 4.1
+            },
+            {
+              "at": "2026-09-18T12:30:00Z",
+              "value": 3.9
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "target": "OBS-0001",
+  "expected": "insufficient_context",
+  "forbidden": [
+    "supports"
+  ]
+}

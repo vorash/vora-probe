@@ -33,6 +33,11 @@ type Report struct {
 	Relations           []Relation         `json:"relations"`
 	Decisions           []Decision         `json:"decisions"`
 	Trace               []Call             `json:"trace,omitempty"`
+	// Arm is the evaluator that labelled the evidence, so a report says which
+	// question produced its relations.
+	Arm            string          `json:"arm"`
+	ArmVersion     string          `json:"arm_version"`
+	EvaluatorCalls []EvaluatorCall `json:"evaluator_calls,omitempty"`
 }
 
 type ClaimReport struct {
@@ -159,6 +164,8 @@ func BuildReport(env *StepEnvelope, policy ClaimPolicy, now time.Time) (Report, 
 	report.Supporting = linksFor(env.Relations, scope, Supports, byID)
 	report.Contradicting = linksFor(env.Relations, scope, Contradicts, byID)
 	report.InsufficientContext = linksFor(env.Relations, scope, InsufficientContext, byID)
+	report.Arm, report.ArmVersion = armOf(env)
+	report.EvaluatorCalls = env.EvaluatorCalls
 	report.Impact = impactSummary(facts)
 	report.Summary = summary(env, leading)
 	report.Recommendation = recommend(env, *leading)
@@ -426,6 +433,18 @@ func terminatedAt(o Observation) (time.Time, bool) {
 		}
 	}
 	return time.Time{}, false
+}
+
+// armOf names the evaluator that produced the relations, preferring the recorded
+// calls because they survive even when no relation was produced.
+func armOf(env *StepEnvelope) (string, string) {
+	if len(env.EvaluatorCalls) > 0 {
+		return env.EvaluatorCalls[0].Arm, env.EvaluatorCalls[0].ArmVersion
+	}
+	for _, r := range env.Relations {
+		return string(r.Evaluator), r.PolicyVersion
+	}
+	return DeterministicArm, RelationPolicyVersion
 }
 
 func inconclusiveStatement(env *StepEnvelope) string {

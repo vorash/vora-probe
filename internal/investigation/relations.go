@@ -10,38 +10,10 @@ import (
 // Deterministic evidence relations.
 //
 // Every relation here is produced by a rule, not by a model, and carries the
-// reason for the label. This is the evaluator the step-3 model-based arms are
-// compared against: if a model evaluator cannot beat these rules, that is a
-// result worth reporting rather than a reason to prefer the model.
-//
-// The rules are conservative in one direction on purpose: an observation only
-// supports a hypothesis when it bears on the mechanism the hypothesis names.
-// "The rollout was nearby" and "latency went up" are recorded, but as
-// insufficient context for a causal claim, not as support for one.
-func EvaluateRelations(ids *IDGen, h Hypothesis, f Facts, obs map[string]Observation, policy ClaimPolicy, at time.Time) []Relation {
-	e := &relationBuilder{ids: ids, hypothesis: h, policy: policy, obs: obs, at: at}
-
-	switch h.ClaimKind {
-	case ClaimMemoryLimitTermination:
-		e.memoryLimit(f)
-	case ClaimNonMemoryRestart:
-		e.nonMemoryRestart(f)
-	case ClaimMemoryLeak:
-		e.memoryLeak(f)
-	case ClaimAllocationDefect:
-		e.allocationDefect(f)
-	case ClaimDeploymentRegression:
-		e.deploymentRegression(f)
-	case ClaimResourceSaturation:
-		e.saturation(f)
-	default:
-		e.inconclusive(f)
-	}
-	e.restartContext(f)
-	e.coverageGaps(f)
-	return e.relations
-}
-
+// reason for the label. The rules are conservative in one direction on purpose:
+// an observation only supports a hypothesis when it bears on the mechanism the
+// hypothesis names. "The rollout was nearby" and "latency went up" are recorded,
+// but as insufficient context for a causal claim, not as support for one.
 // restartContext makes sure restart evidence that a rule did not use still
 // appears in the report. An observation that informed the conclusion but
 // produced no relation would otherwise vanish, which is exactly how a report
@@ -65,12 +37,10 @@ func (b *relationBuilder) restartContext(f Facts) {
 }
 
 type relationBuilder struct {
-	ids        *IDGen
 	hypothesis Hypothesis
 	policy     ClaimPolicy
 	obs        map[string]Observation
-	at         time.Time
-	relations  []Relation
+	drafts     []RelationDraft
 	seen       map[string]bool
 }
 
@@ -82,16 +52,7 @@ func (b *relationBuilder) add(obsID string, rel Relationship, reason string) {
 		b.seen = map[string]bool{}
 	}
 	b.seen[obsID] = true
-	b.relations = append(b.relations, Relation{
-		SchemaVersion: gateway.SchemaVersion,
-		ID:            b.ids.Next(PrefixRelation),
-		Observation:   obsID,
-		Hypothesis:    b.hypothesis.ID,
-		Relationship:  rel,
-		Reason:        reason,
-		Evaluator:     EvaluatorDeterministic,
-		PolicyVersion: RelationPolicyVersion,
-	})
+	b.drafts = append(b.drafts, RelationDraft{Observation: obsID, Relationship: rel, Reason: reason})
 }
 
 func (b *relationBuilder) memoryLimit(f Facts) {
