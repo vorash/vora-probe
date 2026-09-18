@@ -1,0 +1,14 @@
+# Build output
+/bin/
+/probe
+/probe-worker
+
+# Local investigation artifacts: owner-readable, never committed.
+/.probe/
+
+# Local lab and Vora credentials
+*.pem
+*.key
+deploy/lab/*.local.yaml
+
+.DS_Store
