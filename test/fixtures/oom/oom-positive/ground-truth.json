@@ -1,0 +1,26 @@
+{
+  "schema_version": "probe/v1",
+  "case": "oom-positive",
+  "notes": "The memory series is sawtooth because the container is killed and restarts, so sustained growth is not evidenced and a leak must be refused. Peak working set 528 MiB is above 90% of the 512 MiB limit.",
+  "expected": {
+    "fault_domain": "kubernetes",
+    "leading_claim": "memory_limit_termination",
+    "cause_asserted": true,
+    "allowed_claims": [
+      "memory_limit_termination"
+    ],
+    "forbidden_claims": [
+      "memory_leak",
+      "allocation_defect",
+      "deployment_regression",
+      "resource_saturation",
+      "non_memory_restart"
+    ],
+    "required_observation_types": [
+      "metric",
+      "k8s_container_state",
+      "k8s_event"
+    ],
+    "recommendation_executed": false
+  }
+}

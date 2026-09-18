@@ -1,0 +1,31 @@
+{
+  "schema_version": "probe/v1",
+  "case": "missing-telemetry",
+  "notes": "Restart count is evidenced; the terminating cause is not, because the container status omits it and both the memory series and the events are unavailable. The report must stay inconclusive and publish the two coverage gaps.",
+  "expected": {
+    "fault_domain": "unknown",
+    "leading_claim": "unknown_cause",
+    "cause_asserted": false,
+    "allowed_claims": [
+      "unknown_cause"
+    ],
+    "forbidden_claims": [
+      "memory_limit_termination",
+      "memory_leak",
+      "allocation_defect",
+      "non_memory_restart",
+      "deployment_regression",
+      "resource_saturation"
+    ],
+    "required_observation_types": [
+      "k8s_container_state",
+      "metric",
+      "k8s_event"
+    ],
+    "required_gap_actions": [
+      "metrics.query",
+      "kubernetes.events"
+    ],
+    "recommendation_executed": false
+  }
+}

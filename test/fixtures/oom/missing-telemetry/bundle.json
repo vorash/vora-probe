@@ -1,0 +1,237 @@
+{
+  "schema_version": "probe/v1",
+  "case": "missing-telemetry",
+  "description": "payment-api containers restart, but the container status carries no termination reason or exit code, the memory series is unavailable and event retention does not cover the window. No cause can be established.",
+  "incident": {
+    "schema_version": "probe/v1",
+    "id": "INC-0003",
+    "environment": "lab",
+    "service": "payment-api",
+    "symptom": "payment-api containers restart and the service is intermittently unavailable",
+    "trigger": "manual",
+    "started_at": "2026-09-18T12:31:00Z",
+    "window": {
+      "start": "2026-09-18T12:00:00Z",
+      "end": "2026-09-18T12:30:00Z"
+    },
+    "status": "open"
+  },
+  "planner": [
+    {
+      "hypotheses": [
+        {
+          "statement": "payment-api exceeded its container memory limit and was terminated",
+          "fault_domain": "kubernetes",
+          "claim_kind": "memory_limit_termination",
+          "evidence_needed": [
+            "container termination reason",
+            "memory working set"
+          ]
+        },
+        {
+          "statement": "payment-api is failing a liveness or readiness probe",
+          "fault_domain": "kubernetes",
+          "claim_kind": "non_memory_restart",
+          "evidence_needed": [
+            "termination reason",
+            "probe failure event"
+          ]
+        }
+      ],
+      "next_action": {
+        "kind": "kubernetes.containers",
+        "entity": "payment-api",
+        "reason": "read the recorded termination reason"
+      },
+      "reason": "restarts are the only established fact, so start there"
+    },
+    {
+      "hypotheses": [
+        {
+          "statement": "payment-api exceeded its container memory limit and was terminated",
+          "fault_domain": "kubernetes",
+          "claim_kind": "memory_limit_termination",
+          "evidence_needed": [
+            "container termination reason",
+            "memory working set"
+          ]
+        },
+        {
+          "statement": "payment-api is failing a liveness or readiness probe",
+          "fault_domain": "kubernetes",
+          "claim_kind": "non_memory_restart",
+          "evidence_needed": [
+            "termination reason",
+            "probe failure event"
+          ]
+        }
+      ],
+      "next_action": {
+        "kind": "metrics.query",
+        "entity": "payment-api",
+        "reason": "measure memory usage in the window",
+        "metric": "container_memory_working_set_bytes",
+        "window": {
+          "start": "2026-09-18T12:00:00Z",
+          "end": "2026-09-18T12:30:00Z"
+        },
+        "resolution": "60s"
+      },
+      "reason": "the memory hypothesis needs a working set measurement"
+    },
+    {
+      "hypotheses": [
+        {
+          "statement": "payment-api exceeded its container memory limit and was terminated",
+          "fault_domain": "kubernetes",
+          "claim_kind": "memory_limit_termination",
+          "evidence_needed": [
+            "container termination reason",
+            "memory working set"
+          ]
+        },
+        {
+          "statement": "payment-api is failing a liveness or readiness probe",
+          "fault_domain": "kubernetes",
+          "claim_kind": "non_memory_restart",
+          "evidence_needed": [
+            "termination reason",
+            "probe failure event"
+          ]
+        }
+      ],
+      "next_action": {
+        "kind": "kubernetes.events",
+        "entity": "payment-api",
+        "reason": "look for an out-of-memory or probe failure event",
+        "window": {
+          "start": "2026-09-18T12:00:00Z",
+          "end": "2026-09-18T12:30:00Z"
+        }
+      },
+      "reason": "events would either corroborate a kill or a probe failure"
+    },
+    {
+      "hypotheses": [
+        {
+          "statement": "payment-api exceeded its container memory limit and was terminated",
+          "fault_domain": "kubernetes",
+          "claim_kind": "memory_limit_termination",
+          "evidence_needed": [
+            "container termination reason",
+            "memory working set"
+          ]
+        },
+        {
+          "statement": "payment-api is failing a liveness or readiness probe",
+          "fault_domain": "kubernetes",
+          "claim_kind": "non_memory_restart",
+          "evidence_needed": [
+            "termination reason",
+            "probe failure event"
+          ]
+        }
+      ],
+      "reason": "restarts are evidenced but the terminating cause is not; report inconclusive and name the missing evidence"
+    }
+  ],
+  "evidence": [
+    {
+      "action": {
+        "kind": "kubernetes.containers",
+        "entity": "payment-api",
+        "reason": "read the recorded termination reason"
+      },
+      "response": {
+        "schema_version": "probe/v1",
+        "kind": "kubernetes.containers",
+        "entity": "payment-api",
+        "status": "ok",
+        "completeness": "complete",
+        "retrieved_at": "2026-09-18T12:31:05Z",
+        "query": {
+          "datasource": "kubernetes",
+          "query": "pods -n lab -l app=payment-api"
+        },
+        "digest": "sha256:58168946487dab64f2d9d5b2273921a761caa80c0f008bd965a1178fc31f12f7",
+        "payload": {
+          "namespace": "lab",
+          "pods": [
+            {
+              "name": "payment-api-5f8c9d7b4-q7m2v",
+              "namespace": "lab",
+              "phase": "Running",
+              "node": "mini-vora",
+              "start_time": "2026-09-18T12:26:41Z",
+              "containers": [
+                {
+                  "name": "app",
+                  "ready": false,
+                  "restart_count": 5,
+                  "state": "waiting",
+                  "reason": "CrashLoopBackOff"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "action": {
+        "kind": "metrics.query",
+        "entity": "payment-api",
+        "reason": "measure memory usage in the window",
+        "metric": "container_memory_working_set_bytes",
+        "window": {
+          "start": "2026-09-18T12:00:00Z",
+          "end": "2026-09-18T12:30:00Z"
+        },
+        "resolution": "60s"
+      },
+      "response": {
+        "schema_version": "probe/v1",
+        "kind": "metrics.query",
+        "entity": "payment-api",
+        "status": "unavailable",
+        "completeness": "unavailable",
+        "retrieved_at": "2026-09-18T12:31:06Z",
+        "query": {
+          "datasource": "prometheus",
+          "query": "container_memory_working_set_bytes{service=\"payment-api\"}",
+          "params": {
+            "metric": "container_memory_working_set_bytes"
+          },
+          "resolution": "60s"
+        },
+        "reason": "the metrics backend holds no series for this service in the requested window",
+        "digest": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "action": {
+        "kind": "kubernetes.events",
+        "entity": "payment-api",
+        "reason": "look for an out-of-memory or probe failure event",
+        "window": {
+          "start": "2026-09-18T12:00:00Z",
+          "end": "2026-09-18T12:30:00Z"
+        }
+      },
+      "response": {
+        "schema_version": "probe/v1",
+        "kind": "kubernetes.events",
+        "entity": "payment-api",
+        "status": "unavailable",
+        "completeness": "unavailable",
+        "retrieved_at": "2026-09-18T12:31:07Z",
+        "query": {
+          "datasource": "kubernetes",
+          "query": "events -n lab -l app=payment-api"
+        },
+        "reason": "cluster event retention is shorter than the incident window; events for this window have been evicted",
+        "digest": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    }
+  ]
+}

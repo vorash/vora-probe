@@ -1,0 +1,531 @@
+{
+  "schema_version": "probe/v1",
+  "case": "misleading-deployment-correlation",
+  "description": "A checkout-api rollout completes 2m34s before p99 latency crosses twice its baseline. Memory and restart counts are normal and query volume is flat, so the only evidence linking the rollout to the impact is temporal proximity.",
+  "incident": {
+    "schema_version": "probe/v1",
+    "id": "INC-0002",
+    "environment": "lab",
+    "service": "checkout-api",
+    "symptom": "checkout-api p99 latency is above the 2s SLO",
+    "trigger": "manual",
+    "started_at": "2026-09-18T12:31:00Z",
+    "window": {
+      "start": "2026-09-18T12:00:00Z",
+      "end": "2026-09-18T12:30:00Z"
+    },
+    "status": "open"
+  },
+  "planner": [
+    {
+      "hypotheses": [
+        {
+          "statement": "the checkout-api rollout that completed just before the impact caused a latency regression",
+          "fault_domain": "application",
+          "claim_kind": "deployment_regression",
+          "evidence_needed": [
+            "rollout timestamp",
+            "latency before and after the rollout",
+            "mechanism evidence"
+          ]
+        },
+        {
+          "statement": "checkout-api is exceeding its memory limit and restarting",
+          "fault_domain": "kubernetes",
+          "claim_kind": "memory_limit_termination",
+          "evidence_needed": [
+            "container termination reason",
+            "memory working set"
+          ]
+        },
+        {
+          "statement": "the database behind checkout-api is the bottleneck",
+          "fault_domain": "database",
+          "claim_kind": "unknown_cause",
+          "evidence_needed": [
+            "db query count"
+          ]
+        }
+      ],
+      "next_action": {
+        "kind": "kubernetes.deployments",
+        "entity": "checkout-api",
+        "reason": "establish whether a rollout preceded the impact and when"
+      },
+      "reason": "the symptom is a latency regression, so start from recent change"
+    },
+    {
+      "hypotheses": [
+        {
+          "statement": "the checkout-api rollout that completed just before the impact caused a latency regression",
+          "fault_domain": "application",
+          "claim_kind": "deployment_regression",
+          "evidence_needed": [
+            "rollout timestamp",
+            "latency before and after the rollout",
+            "mechanism evidence"
+          ]
+        },
+        {
+          "statement": "checkout-api is exceeding its memory limit and restarting",
+          "fault_domain": "kubernetes",
+          "claim_kind": "memory_limit_termination",
+          "evidence_needed": [
+            "container termination reason",
+            "memory working set"
+          ]
+        },
+        {
+          "statement": "the database behind checkout-api is the bottleneck",
+          "fault_domain": "database",
+          "claim_kind": "unknown_cause",
+          "evidence_needed": [
+            "db query count"
+          ]
+        }
+      ],
+      "next_action": {
+        "kind": "metrics.query",
+        "entity": "checkout-api",
+        "reason": "measure the impact relative to the rollout",
+        "metric": "request_latency_p99_seconds",
+        "window": {
+          "start": "2026-09-18T12:00:00Z",
+          "end": "2026-09-18T12:30:00Z"
+        },
+        "resolution": "60s"
+      },
+      "reason": "quantify the latency change around the rollout"
+    },
+    {
+      "hypotheses": [
+        {
+          "statement": "the checkout-api rollout that completed just before the impact caused a latency regression",
+          "fault_domain": "application",
+          "claim_kind": "deployment_regression",
+          "evidence_needed": [
+            "rollout timestamp",
+            "latency before and after the rollout",
+            "mechanism evidence"
+          ]
+        },
+        {
+          "statement": "checkout-api is exceeding its memory limit and restarting",
+          "fault_domain": "kubernetes",
+          "claim_kind": "memory_limit_termination",
+          "evidence_needed": [
+            "container termination reason",
+            "memory working set"
+          ]
+        },
+        {
+          "statement": "the database behind checkout-api is the bottleneck",
+          "fault_domain": "database",
+          "claim_kind": "unknown_cause",
+          "evidence_needed": [
+            "db query count"
+          ]
+        }
+      ],
+      "next_action": {
+        "kind": "kubernetes.containers",
+        "entity": "checkout-api",
+        "reason": "check whether the latency change coincides with container restarts"
+      },
+      "reason": "rule out a restart-driven explanation before blaming the change"
+    },
+    {
+      "hypotheses": [
+        {
+          "statement": "the checkout-api rollout that completed just before the impact caused a latency regression",
+          "fault_domain": "application",
+          "claim_kind": "deployment_regression",
+          "evidence_needed": [
+            "rollout timestamp",
+            "latency before and after the rollout",
+            "mechanism evidence"
+          ]
+        },
+        {
+          "statement": "checkout-api is exceeding its memory limit and restarting",
+          "fault_domain": "kubernetes",
+          "claim_kind": "memory_limit_termination",
+          "evidence_needed": [
+            "container termination reason",
+            "memory working set"
+          ]
+        },
+        {
+          "statement": "the database behind checkout-api is the bottleneck",
+          "fault_domain": "database",
+          "claim_kind": "unknown_cause",
+          "evidence_needed": [
+            "db query count"
+          ]
+        }
+      ],
+      "next_action": {
+        "kind": "metrics.query",
+        "entity": "checkout-api",
+        "reason": "confirm memory is not approaching a limit",
+        "metric": "container_memory_working_set_bytes",
+        "window": {
+          "start": "2026-09-18T12:00:00Z",
+          "end": "2026-09-18T12:30:00Z"
+        },
+        "resolution": "60s"
+      },
+      "reason": "the memory hypothesis needs a working set measurement"
+    },
+    {
+      "hypotheses": [
+        {
+          "statement": "the checkout-api rollout that completed just before the impact caused a latency regression",
+          "fault_domain": "application",
+          "claim_kind": "deployment_regression",
+          "evidence_needed": [
+            "rollout timestamp",
+            "latency before and after the rollout",
+            "mechanism evidence"
+          ]
+        },
+        {
+          "statement": "checkout-api is exceeding its memory limit and restarting",
+          "fault_domain": "kubernetes",
+          "claim_kind": "memory_limit_termination",
+          "evidence_needed": [
+            "container termination reason",
+            "memory working set"
+          ]
+        },
+        {
+          "statement": "the database behind checkout-api is the bottleneck",
+          "fault_domain": "database",
+          "claim_kind": "unknown_cause",
+          "evidence_needed": [
+            "db query count"
+          ]
+        }
+      ],
+      "next_action": {
+        "kind": "metrics.query",
+        "entity": "checkout-api",
+        "reason": "test whether the rollout changed database query volume",
+        "metric": "db_query_count",
+        "window": {
+          "start": "2026-09-18T12:00:00Z",
+          "end": "2026-09-18T12:30:00Z"
+        },
+        "resolution": "60s"
+      },
+      "reason": "a deployment regression needs a mechanism, not just a timestamp"
+    },
+    {
+      "hypotheses": [
+        {
+          "statement": "the checkout-api rollout that completed just before the impact caused a latency regression",
+          "fault_domain": "application",
+          "claim_kind": "deployment_regression",
+          "evidence_needed": [
+            "rollout timestamp",
+            "latency before and after the rollout",
+            "mechanism evidence"
+          ]
+        },
+        {
+          "statement": "checkout-api is exceeding its memory limit and restarting",
+          "fault_domain": "kubernetes",
+          "claim_kind": "memory_limit_termination",
+          "evidence_needed": [
+            "container termination reason",
+            "memory working set"
+          ]
+        },
+        {
+          "statement": "the database behind checkout-api is the bottleneck",
+          "fault_domain": "database",
+          "claim_kind": "unknown_cause",
+          "evidence_needed": [
+            "db query count"
+          ]
+        }
+      ],
+      "reason": "the rollout is temporally close but query volume and memory are flat, so proximity is the only link; the cause is not established"
+    }
+  ],
+  "evidence": [
+    {
+      "action": {
+        "kind": "kubernetes.deployments",
+        "entity": "checkout-api",
+        "reason": "establish whether a rollout preceded the impact and when"
+      },
+      "response": {
+        "schema_version": "probe/v1",
+        "kind": "kubernetes.deployments",
+        "entity": "checkout-api",
+        "status": "ok",
+        "completeness": "complete",
+        "retrieved_at": "2026-09-18T12:31:05Z",
+        "query": {
+          "datasource": "kubernetes",
+          "query": "deployments -n lab -l app=checkout-api"
+        },
+        "digest": "sha256:ff784019b3e93c2c8f7884972ab4de76a2730dd09a5745af48e81dafb73ce28e",
+        "payload": {
+          "namespace": "lab",
+          "deployments": [
+            {
+              "name": "checkout-api",
+              "namespace": "lab",
+              "image": "checkout-api:5f87b",
+              "replicas": 4,
+              "available_replicas": 4,
+              "rollout_completed_at": "2026-09-18T12:12:26Z"
+            },
+            {
+              "name": "checkout-frontend",
+              "namespace": "lab",
+              "image": "checkout-frontend:9c1",
+              "replicas": 2,
+              "available_replicas": 2,
+              "rollout_completed_at": "2026-09-18T11:58:00Z"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "action": {
+        "kind": "metrics.query",
+        "entity": "checkout-api",
+        "reason": "measure the impact relative to the rollout",
+        "metric": "request_latency_p99_seconds",
+        "window": {
+          "start": "2026-09-18T12:00:00Z",
+          "end": "2026-09-18T12:30:00Z"
+        },
+        "resolution": "60s"
+      },
+      "response": {
+        "schema_version": "probe/v1",
+        "kind": "metrics.query",
+        "entity": "checkout-api",
+        "status": "ok",
+        "completeness": "complete",
+        "retrieved_at": "2026-09-18T12:31:06Z",
+        "query": {
+          "datasource": "prometheus",
+          "query": "request_latency_p99_seconds{service=\"checkout-api\"}",
+          "params": {
+            "metric": "request_latency_p99_seconds"
+          },
+          "resolution": "60s"
+        },
+        "digest": "sha256:6ab0db9d2d1694b3856074614a4fb7d778ca12b79a1961692245e1915db265c4",
+        "payload": {
+          "metric": "request_latency_p99_seconds",
+          "unit": "seconds",
+          "samples": [
+            {
+              "at": "2026-09-18T12:00:00Z",
+              "value": 0.22
+            },
+            {
+              "at": "2026-09-18T12:05:00Z",
+              "value": 0.24
+            },
+            {
+              "at": "2026-09-18T12:10:00Z",
+              "value": 0.23
+            },
+            {
+              "at": "2026-09-18T12:15:00Z",
+              "value": 1.9
+            },
+            {
+              "at": "2026-09-18T12:20:00Z",
+              "value": 3.8
+            },
+            {
+              "at": "2026-09-18T12:25:00Z",
+              "value": 4.1
+            },
+            {
+              "at": "2026-09-18T12:30:00Z",
+              "value": 3.9
+            }
+          ]
+        }
+      }
+    },
+    {
+      "action": {
+        "kind": "kubernetes.containers",
+        "entity": "checkout-api",
+        "reason": "check whether the latency change coincides with container restarts"
+      },
+      "response": {
+        "schema_version": "probe/v1",
+        "kind": "kubernetes.containers",
+        "entity": "checkout-api",
+        "status": "ok",
+        "completeness": "complete",
+        "retrieved_at": "2026-09-18T12:31:07Z",
+        "query": {
+          "datasource": "kubernetes",
+          "query": "pods -n lab -l app=checkout-api"
+        },
+        "digest": "sha256:5ca432245cee7d5f75f87a5c431ca51706813b5c4739c145308e434dd6f86035",
+        "payload": {
+          "namespace": "lab",
+          "pods": [
+            {
+              "name": "checkout-api-7c4b9f8d6-k9wzp",
+              "namespace": "lab",
+              "phase": "Running",
+              "node": "mini-vora",
+              "start_time": "2026-09-18T12:12:19Z",
+              "containers": [
+                {
+                  "name": "app",
+                  "ready": true,
+                  "restart_count": 0,
+                  "state": "running"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "action": {
+        "kind": "metrics.query",
+        "entity": "checkout-api",
+        "reason": "confirm memory is not approaching a limit",
+        "metric": "container_memory_working_set_bytes",
+        "window": {
+          "start": "2026-09-18T12:00:00Z",
+          "end": "2026-09-18T12:30:00Z"
+        },
+        "resolution": "60s"
+      },
+      "response": {
+        "schema_version": "probe/v1",
+        "kind": "metrics.query",
+        "entity": "checkout-api",
+        "status": "ok",
+        "completeness": "complete",
+        "retrieved_at": "2026-09-18T12:31:08Z",
+        "query": {
+          "datasource": "prometheus",
+          "query": "container_memory_working_set_bytes{service=\"checkout-api\"}",
+          "params": {
+            "metric": "container_memory_working_set_bytes"
+          },
+          "resolution": "60s"
+        },
+        "digest": "sha256:51c799fff3e292ff3131681566d1e1ebc31501822eac7831014e58acee53910f",
+        "payload": {
+          "metric": "container_memory_working_set_bytes",
+          "unit": "bytes",
+          "samples": [
+            {
+              "at": "2026-09-18T12:00:00Z",
+              "value": 325058560
+            },
+            {
+              "at": "2026-09-18T12:05:00Z",
+              "value": 330301440
+            },
+            {
+              "at": "2026-09-18T12:10:00Z",
+              "value": 324009984
+            },
+            {
+              "at": "2026-09-18T12:15:00Z",
+              "value": 327155712
+            },
+            {
+              "at": "2026-09-18T12:20:00Z",
+              "value": 333447168
+            },
+            {
+              "at": "2026-09-18T12:25:00Z",
+              "value": 326107136
+            },
+            {
+              "at": "2026-09-18T12:30:00Z",
+              "value": 329252864
+            }
+          ]
+        }
+      }
+    },
+    {
+      "action": {
+        "kind": "metrics.query",
+        "entity": "checkout-api",
+        "reason": "test whether the rollout changed database query volume",
+        "metric": "db_query_count",
+        "window": {
+          "start": "2026-09-18T12:00:00Z",
+          "end": "2026-09-18T12:30:00Z"
+        },
+        "resolution": "60s"
+      },
+      "response": {
+        "schema_version": "probe/v1",
+        "kind": "metrics.query",
+        "entity": "checkout-api",
+        "status": "ok",
+        "completeness": "complete",
+        "retrieved_at": "2026-09-18T12:31:09Z",
+        "query": {
+          "datasource": "prometheus",
+          "query": "db_query_count{service=\"checkout-api\"}",
+          "params": {
+            "metric": "db_query_count"
+          },
+          "resolution": "60s"
+        },
+        "digest": "sha256:91f83e629612f16132bed2ebf9de4a07cae333fd6d8b7c9e101c5a080e4082bf",
+        "payload": {
+          "metric": "db_query_count",
+          "unit": "queries_per_second",
+          "samples": [
+            {
+              "at": "2026-09-18T12:00:00Z",
+              "value": 1200
+            },
+            {
+              "at": "2026-09-18T12:05:00Z",
+              "value": 1190
+            },
+            {
+              "at": "2026-09-18T12:10:00Z",
+              "value": 1210
+            },
+            {
+              "at": "2026-09-18T12:15:00Z",
+              "value": 1205
+            },
+            {
+              "at": "2026-09-18T12:20:00Z",
+              "value": 1188
+            },
+            {
+              "at": "2026-09-18T12:25:00Z",
+              "value": 1215
+            },
+            {
+              "at": "2026-09-18T12:30:00Z",
+              "value": 1200
+            }
+          ]
+        }
+      }
+    }
+  ]
+}
