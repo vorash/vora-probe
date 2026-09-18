@@ -22,6 +22,7 @@ type EventKind string
 
 const (
 	EventRunStarted  EventKind = "run_started"
+	EventSandbox     EventKind = "sandbox"
 	EventRequest     EventKind = "request"
 	EventResult      EventKind = "result"
 	EventObservation EventKind = "observation"
