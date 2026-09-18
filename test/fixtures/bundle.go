@@ -37,19 +37,13 @@ type PlannerHypothesis struct {
 	EvidenceNeeded []string `json:"evidence_needed,omitempty"`
 }
 
-// Pair binds a recorded answer to the exact request it answers.
-type Pair struct {
-	Action   gateway.Action   `json:"action"`
-	Response gateway.Response `json:"response"`
-}
-
 type Bundle struct {
 	SchemaVersion string                 `json:"schema_version"`
 	Case          string                 `json:"case"`
 	Description   string                 `json:"description"`
 	Incident      investigation.Incident `json:"incident"`
 	Planner       []PlannerTurn          `json:"planner"`
-	Evidence      []Pair                 `json:"evidence"`
+	Evidence      []gateway.Recorded     `json:"evidence"`
 }
 
 type GroundTruth struct {

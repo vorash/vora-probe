@@ -1,7 +1,7 @@
 # Build output
 /bin/
-/probe
-/probe-worker
+/vora-probe
+/vora-probe-worker
 
 # Local investigation artifacts: owner-readable, never committed.
 /.probe/

@@ -184,6 +184,13 @@ func (a Action) String() string {
 	return fmt.Sprintf("%s(%s)", a.Kind, a.Entity)
 }
 
+// Recorded pairs a request with the answer it produced. Offline replay is the
+// same step protocol with a recorded answer in place of a live gateway.
+type Recorded struct {
+	Action   Action   `json:"action"`
+	Response Response `json:"response"`
+}
+
 // ResponseStatus says whether the request produced usable data at all.
 type ResponseStatus string
 
@@ -262,7 +269,10 @@ func (r Response) Validate() error {
 	if r.RetrievedAt.IsZero() {
 		return fmt.Errorf("response retrieved_at must be set")
 	}
-	if r.Digest != Digest(r.Payload) {
+	// A redacted payload no longer matches its digest by construction: the digest
+	// identifies the evidence as retrieved. The redacted completeness value is
+	// what keeps that exception loud and checkable, so it is allowed only there.
+	if r.Completeness != Redacted && r.Digest != Digest(r.Payload) {
 		return fmt.Errorf("response digest does not match payload")
 	}
 	return nil
