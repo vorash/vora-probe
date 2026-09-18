@@ -80,9 +80,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # Named downloads only. An unnamed download also pulls the buildx cache
+      # artifact, which is not a release asset and fails to extract.
       - uses: actions/download-artifact@v4
         with:
-          path: artifacts
+          name: dist
+          path: artifacts/dist
+      - uses: actions/download-artifact@v4
+        with:
+          name: image-digest
+          path: artifacts/image-digest
       - name: notes
         run: |
           digest=$(cat artifacts/image-digest/image-digest.txt)
