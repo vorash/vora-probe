@@ -64,6 +64,7 @@ investigator:
 | Command | Shape |
 | --- | --- |
 | `inject.sh oom 512` | working set past the limit → `OOMKilled`, a sawtooth, not a leak |
+| `inject.sh ramp` | climbs to ~94% of the limit, holds so it is sampled, then pushes over → `OOMKilled` with corroborating memory evidence |
 | `inject.sh non-oom` | failed liveness probe → restarts that are not memory-driven |
 | `inject.sh rollout` | a real, unrelated deployment change near an impact |
 | `inject.sh drop-metric request_error_rate` | an application metric stops existing |
