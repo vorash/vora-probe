@@ -130,3 +130,46 @@ func TestARunLinksMetricEvidenceOnlyWhenToldWhere(t *testing.T) {
 		}
 	}
 }
+
+// labelledPlanner answers from the recorded turns, as a fallback endpoint.
+type labelledPlanner struct{ recorded *models.RecordedPlanner }
+
+func (p labelledPlanner) Plan(ctx context.Context, req investigation.ModelRequest) (investigation.ModelResponse, error) {
+	resp, err := p.recorded.Plan(ctx, req)
+	resp.AnsweredBy, resp.Attempts, resp.FallbackReasons = "backup.example gpt-x", 2, []string{"primary returned 503"}
+	return resp, err
+}
+
+// A run says which model planned it, and when the primary endpoint was passed
+// over, why: the trace carries both on every planner call.
+func TestTheTraceSaysWhichModelPlannedAndWhyItFellBack(t *testing.T) {
+	bundle, err := loadBundle(filepath.Join(fixtures.Root(), "oom", "oom-positive"))
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	engine := defaultEngine()
+	gw, err := openFixtureGateway(engine, bundle, wallClock)
+	if err != nil {
+		t.Fatalf("gateway: %v", err)
+	}
+	incident := bundle.Incident
+	incident.StartedAt = time.Now().UTC()
+	result, err := Run(context.Background(), RunOptions{Incident: incident, Engine: engine, OutDir: t.TempDir(),
+		Planner: labelledPlanner{models.NewRecordedPlanner(plannerTurns(bundle))}, Gateway: gw})
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	planned := 0
+	for _, c := range result.Report.Trace {
+		if c.Kind != investigation.CallModel {
+			continue
+		}
+		planned++
+		if c.Model != "backup.example gpt-x" || !strings.Contains(c.Reason, "primary returned 503") {
+			t.Fatalf("planner call %+v: want the answering model and the fallback reason", c)
+		}
+	}
+	if planned == 0 {
+		t.Fatal("the run made no planner calls")
+	}
+}

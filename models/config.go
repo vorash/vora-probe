@@ -88,6 +88,9 @@ func keyState(key string) string {
 type Config struct {
 	Baseline Endpoint
 	Jev      Endpoint
+	// PlannerFallback is tried when the planner's primary endpoint (Baseline)
+	// fails. It never stands in for an evaluator arm.
+	PlannerFallback Endpoint
 }
 
 // ConfigFromEnv reads the run configuration. Absent values are not an error: a
@@ -100,6 +103,13 @@ func ConfigFromEnv() Config {
 			Model:           envOr("VORA_PROBE_MODEL", "gpt-4o-mini"),
 			Timeout:         durationOr("VORA_PROBE_MODEL_TIMEOUT", 60*time.Second),
 			MaxOutputTokens: intOr("VORA_PROBE_MODEL_MAX_OUTPUT_TOKENS", 512),
+		},
+		PlannerFallback: Endpoint{
+			BaseURL:         os.Getenv("VORA_PROBE_MODEL_FALLBACK_BASE_URL"),
+			APIKey:          os.Getenv("VORA_PROBE_MODEL_FALLBACK_API_KEY"),
+			Model:           envOr("VORA_PROBE_MODEL_FALLBACK", "gpt-4o-mini"),
+			Timeout:         durationOr("VORA_PROBE_MODEL_FALLBACK_TIMEOUT", 60*time.Second),
+			MaxOutputTokens: intOr("VORA_PROBE_MODEL_FALLBACK_MAX_OUTPUT_TOKENS", 512),
 		},
 		Jev: Endpoint{
 			BaseURL:         os.Getenv("VORA_PROBE_JEV_BASE_URL"),

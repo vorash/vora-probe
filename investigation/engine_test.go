@@ -470,3 +470,22 @@ func TestEnvelopeValidationRejectsForeignRun(t *testing.T) {
 		t.Fatal("a run that does not belong to the incident must be refused")
 	}
 }
+
+// A planner reply that took fallbacks cost more than one call, and every one is
+// charged: a fallback is never free, and so cannot loop past the budget.
+func TestEveryPlannerAttemptIsCharged(t *testing.T) {
+	engine := testEngine(gateway.DefaultPolicy())
+	step1, err := engine.Step(investigation.WorkerInput{State: newEnvelope(investigation.DefaultBudgets())})
+	if err != nil {
+		t.Fatalf("step: %v", err)
+	}
+	plan := goodPlan(&gateway.Action{Kind: gateway.ActionKubernetesContainers, Entity: "payment-api", Reason: "check"})
+	plan.Attempts = 3
+	step2, err := engine.Step(modelInput(step1.Envelope, plan))
+	if err != nil {
+		t.Fatalf("step: %v", err)
+	}
+	if got := step2.Envelope.Run.Used.ModelCalls; got != 3 {
+		t.Fatalf("model calls = %d, want 3: the request, plus the two further attempts it took", got)
+	}
+}

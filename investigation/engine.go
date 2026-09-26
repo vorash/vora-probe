@@ -284,6 +284,12 @@ func (e *Engine) reassess(s *state) error {
 func (e *Engine) consumeModel(s *state, pending *Pending) (bool, *gateway.Action, error) {
 	response := pending.Model
 	s.env.ModelAttempts++
+	// A reply that took fallbacks cost more than one call. The first was
+	// charged when the request was issued; the rest are charged here, so a
+	// fallback is never free and can never loop past the budget.
+	if response.Attempts > 1 {
+		s.env.Run.Used.ModelCalls += response.Attempts - 1
+	}
 
 	if err := response.Validate(s.env.Phase); err != nil {
 		if s.env.ModelAttempts < 2 {

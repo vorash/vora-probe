@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"strings"
 	"time"
 
@@ -94,12 +95,70 @@ func (p LivePlanner) Plan(ctx context.Context, request investigation.ModelReques
 	// The schema version is the client's contract, not a question for the model.
 	// What the model does have to get right is the content, and the engine
 	// validates that unchanged.
+	model := parsed.Model
+	if model == "" {
+		model = p.Endpoint.Model
+	}
 	return investigation.ModelResponse{
 		SchemaVersion: gateway.SchemaVersion,
 		Hypotheses:    answer.Hypotheses,
 		NextAction:    answer.NextAction,
 		Reason:        answer.Reason,
+		AnsweredBy:    endpointHost(p.Endpoint.BaseURL) + " " + model,
+		Attempts:      1,
 	}, nil
+}
+
+// FallbackPlanner asks each planner in turn until one answers. It is for the
+// planner alone: an evaluator arm under comparison is never substituted, but a
+// run whose planner endpoint is down can still be planned by the next one, and
+// the report says which answered, and why the others were passed over.
+type FallbackPlanner struct {
+	Planners []Planner
+}
+
+func (f FallbackPlanner) Plan(ctx context.Context, request investigation.ModelRequest) (investigation.ModelResponse, error) {
+	var reasons []string
+	var errs []error
+	attempts := 0
+	for _, p := range f.Planners {
+		resp, err := p.Plan(ctx, request)
+		n := resp.Attempts
+		if n == 0 {
+			n = 1
+		}
+		attempts += n
+		if err == nil {
+			resp.Attempts = attempts
+			resp.FallbackReasons = append(reasons, resp.FallbackReasons...)
+			return resp, nil
+		}
+		errs = append(errs, err)
+		reasons = append(reasons, err.Error())
+		if ctx.Err() != nil {
+			// The run's deadline passed: no endpoint can answer in time.
+			break
+		}
+	}
+	return investigation.ModelResponse{}, fmt.Errorf("every planner endpoint failed: %w", errors.Join(errs...))
+}
+
+// PlannerFromConfig is the live planner for a run: the primary endpoint, then
+// the fallback when one is configured, each with its own timeout.
+func PlannerFromConfig(cfg Config) Planner {
+	primary := LivePlanner{Endpoint: cfg.Baseline, MaxResponseBytes: 1 << 20}
+	if !cfg.PlannerFallback.Configured() {
+		return primary
+	}
+	return FallbackPlanner{Planners: []Planner{primary, LivePlanner{Endpoint: cfg.PlannerFallback, MaxResponseBytes: 1 << 20}}}
+}
+
+func endpointHost(base string) string {
+	u, err := url.Parse(base)
+	if err != nil || u.Host == "" {
+		return base
+	}
+	return u.Host
 }
 
 type plannerAnswer struct {

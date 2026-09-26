@@ -99,7 +99,7 @@ func serveCommand(args []string) error {
 	if !endpoint.Configured() {
 		return errors.New("serve needs a planner endpoint: set VORA_PROBE_MODEL_BASE_URL (and the key and model)")
 	}
-	planner := models.LivePlanner{Endpoint: endpoint, MaxResponseBytes: 1 << 20}
+	planner := models.PlannerFromConfig(models.ConfigFromEnv())
 
 	arm, err := evaluatorArm(cfg.Evaluator)
 	if err != nil {

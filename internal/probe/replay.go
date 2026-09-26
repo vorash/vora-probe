@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/vorash/vora-probe/fixtures"
@@ -439,6 +440,10 @@ func stepOnce(
 		if raw, err := json.Marshal(response); err == nil {
 			call.Bytes = len(raw)
 			call.ResponseDigest = gateway.Digest(raw)
+		}
+		call.Model = response.AnsweredBy
+		if len(response.FallbackReasons) > 0 {
+			call.Reason = "answered after falling back: " + strings.Join(response.FallbackReasons, "; ")
 		}
 		if err := cfg.journal.Append(store.Event{
 			RunID: cfg.runID, IncidentID: env.Incident.ID, Step: result.Step, Kind: store.EventResult,

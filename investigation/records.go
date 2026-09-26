@@ -330,6 +330,9 @@ type Call struct {
 	DurationMS     int64      `json:"duration_ms"`
 	Status         CallStatus `json:"status"`
 	Reason         string     `json:"reason,omitempty"`
+	// Model is what answered a model call: the endpoint and the model the
+	// provider reported, so a run says which model planned it.
+	Model string `json:"model,omitempty"`
 }
 
 // Budgets are the hard ceilings for one run. Every retry consumes the same
