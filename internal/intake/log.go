@@ -30,6 +30,10 @@ const (
 	changeUnmapped      changeKind = "unmapped"
 	changeInvestigation changeKind = "investigation"
 	changePost          changeKind = "post"
+
+	changeForecastOpened  changeKind = "forecast_opened"
+	changeForecastRevised changeKind = "forecast_revised"
+	changeForecastClosed  changeKind = "forecast_closed"
 )
 
 // change is one line of the log.
@@ -42,6 +46,9 @@ type change struct {
 	Investigation *Investigation               `json:"investigation,omitempty"`
 	Status        investigation.IncidentStatus `json:"incident_status,omitempty"`
 	Post          *Post                        `json:"post,omitempty"`
+	Forecast      *investigation.Forecast      `json:"forecast,omitempty"`
+	Closed        string                       `json:"closed,omitempty"`
+	Reason        string                       `json:"reason,omitempty"`
 }
 
 // commit writes a change, when there is a log, and then applies it. The caller
@@ -72,9 +79,9 @@ func (in *Intake) apply(c change) error {
 		return r, nil
 	}
 	switch c.Kind {
-	case changeOpened:
+	case changeOpened, changeForecastOpened:
 		if c.Record == nil {
-			return fmt.Errorf("opened change without a record")
+			return fmt.Errorf("%s change without a record", c.Kind)
 		}
 		r := c.Record
 		in.records = append(in.records, r)
@@ -122,6 +129,31 @@ func (in *Intake) apply(c change) error {
 		}
 		post := *c.Post
 		r.Post = &post
+	case changeForecastRevised:
+		r, err := record()
+		if err != nil {
+			return err
+		}
+		if r.Forecast == nil || c.Forecast == nil {
+			return fmt.Errorf("forecast revision for %s, which is not a forecast", c.ID)
+		}
+		r.Forecast.Current = *c.Forecast
+		r.Forecast.Revisions++
+		r.UpdatedAt = c.At
+	case changeForecastClosed:
+		r, err := record()
+		if err != nil {
+			return err
+		}
+		if r.Forecast == nil {
+			return fmt.Errorf("forecast closure for %s, which is not a forecast", c.ID)
+		}
+		at := c.At
+		r.Forecast.Closed, r.Forecast.ClosedAt, r.Forecast.Reason = c.Closed, &at, c.Reason
+		r.Alert, r.ResolvedAt, r.UpdatedAt = AlertResolved, &at, at
+		if in.openByGroup[r.GroupKey] == r {
+			delete(in.openByGroup, r.GroupKey)
+		}
 	default:
 		return fmt.Errorf("unknown change kind %q", c.Kind)
 	}

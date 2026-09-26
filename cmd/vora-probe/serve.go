@@ -20,6 +20,7 @@ import (
 	"github.com/vorash/vora-probe/internal/probe"
 	"github.com/vorash/vora-probe/internal/serve"
 	"github.com/vorash/vora-probe/internal/vora"
+	"github.com/vorash/vora-probe/internal/watch"
 	"github.com/vorash/vora-probe/investigation"
 	"github.com/vorash/vora-probe/models"
 )
@@ -42,6 +43,14 @@ type serveConfig struct {
 			PerGroup  int    `json:"per_group"`
 			PerEntity int    `json:"per_entity"`
 		} `json:"rate_limit"`
+		// Watch, when set, forecasts memory exhaustion on the listed targets
+		// before anything fails (#14). Targets are named, never discovered.
+		Watch *struct {
+			Targets           []string `json:"targets"`
+			Every             string   `json:"every"`
+			Window            string   `json:"window"`
+			MaxQueriesPerTick int      `json:"max_queries_per_tick"`
+		} `json:"watch"`
 		// Slack, when set, posts every finished incident's report. Without it
 		// reports stay on disk and in GET /incidents only.
 		Slack *struct {
@@ -164,6 +173,40 @@ func serveCommand(args []string) error {
 	if err != nil {
 		return err
 	}
+	var watcher *watch.Watcher
+	if wc := cfg.Serve.Watch; wc != nil {
+		every, err := parseDuration(wc.Every, time.Minute)
+		if err != nil {
+			return fmt.Errorf("serve.watch.every: %w", err)
+		}
+		window, err := parseDuration(wc.Window, 30*time.Minute)
+		if err != nil {
+			return fmt.Errorf("serve.watch.window: %w", err)
+		}
+		budget := wc.MaxQueriesPerTick
+		if budget == 0 {
+			budget = 20
+		}
+		watcher, err = watch.New(watch.Config{
+			Intake:            in,
+			Gateway:           func() (gateway.Gateway, error) { return cfg.labGateway() },
+			Targets:           wc.Targets,
+			Namespace:         cfg.Lab.Namespace,
+			Every:             every,
+			Window:            window,
+			Forecast:          investigation.DefaultForecastPolicy(),
+			MaxQueriesPerTick: budget,
+			// A forecast incident goes through the same queue, limits and
+			// delivery as an alert; its withdrawal or realization reaches
+			// the thread the way a resolution does.
+			OnOpened: server.Accept,
+			OnClosed: hook(deliverer, (*deliver.Deliverer).Resolved),
+			Logf:     logf,
+		})
+		if err != nil {
+			return err
+		}
+	}
 
 	listen := cfg.Serve.Listen
 	if listen == "" {
@@ -181,6 +224,12 @@ func serveCommand(args []string) error {
 	defer stop()
 	worker := make(chan error, 1)
 	go func() { worker <- server.Run(ctx) }()
+	watching := make(chan error, 1)
+	if watcher != nil {
+		go func() { watching <- watcher.Run(ctx) }()
+	} else {
+		watching <- nil
+	}
 	delivery := make(chan error, 1)
 	if deliverer != nil {
 		go func() { delivery <- deliverer.Run(ctx) }()
@@ -193,13 +242,18 @@ func serveCommand(args []string) error {
 	if deliverer != nil {
 		posting = "to Slack " + cfg.Serve.Slack.Channel
 	}
-	fmt.Printf("vora-probe serve: listening on %s, worker %s, reports in %s, delivery %s\n", listen, mode, outDir, posting)
+	watchingNote := "off"
+	if watcher != nil {
+		watchingNote = strings.Join(cfg.Serve.Watch.Targets, ", ")
+	}
+	fmt.Printf("vora-probe serve: listening on %s, worker %s, reports in %s, delivery %s, watching %s\n", listen, mode, outDir, posting, watchingNote)
 
 	select {
 	case err := <-listener:
 		stop()
 		<-worker
 		<-delivery
+		<-watching
 		return err
 	case <-ctx.Done():
 	}
@@ -212,6 +266,7 @@ func serveCommand(args []string) error {
 	_ = httpServer.Shutdown(shutdownCtx)
 	<-worker
 	<-delivery
+	<-watching
 	if queued := server.Queued(); len(queued) > 0 {
 		fmt.Fprintf(os.Stderr, "vora-probe serve: stopped with %d incidents queued; they resume on the next start: %v\n", len(queued), queued)
 	}

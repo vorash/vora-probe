@@ -162,6 +162,31 @@ records: queued incidents resume in arrival order, and one whose run was cut off
 runs again as its next attempt, with a new journal, the old one kept, and the
 reason on the record.
 
+### Watch
+
+With a `serve.watch` block, `internal/watch` forecasts memory exhaustion on the
+named targets before anything fails (#14). Targets are listed, never
+discovered. Every tick it reads each target's working set (trailing window,
+default 30m) and limit **through the same gateway port and allowlist an
+investigation uses**, so watching adds no egress and no permission. A tick
+spends at most `max_queries_per_tick` (two per target, default 20), and targets
+beyond that are observed on later ticks, in turn.
+
+Each target has at most one forecast, and its state is in the incident log:
+
+- **opened** when `forecast/v1` puts the limit within the horizon. It becomes an
+  incident with trigger `forecast` and a conditional symptom, and goes through
+  the same queue, rate limits and delivery as an alert.
+- **revised** only when the ETA moves more than 20% from where the open forecast
+  projected it. Smaller moves are noise.
+- **withdrawn** when the trend stops (not growing, a poor fit, a reset, or growth
+  now beyond the horizon), with the reason. A gap in the data is not a trend, so
+  it holds the forecast instead.
+- **realized** when the working set reaches the limit. That is the forecast
+  coming true, not a withdrawal.
+
+A restarted server reads open forecasts back from the log and continues them.
+
 ### Delivery
 
 With a `serve.slack` block, every finished incident is posted by
