@@ -202,6 +202,33 @@ checking. Three things make that true:
 - `calc/v1` derivations are pure functions of their inputs and are the only
   source of numbers in a report.
 
+### Forecast derivation (`forecast/v1`)
+
+Foresight (#14) starts from one pure derivation, `ForecastExhaustion`: given
+samples and a known limit, when does the series reach the limit if its current
+growth persists? It is versioned separately from `calc/v1`, so tuning it
+changes no existing report. The outcome is one of three:
+
+- `within_horizon`: a point estimate and a band.
+- `beyond_horizon`: real growth, but too slow to raise.
+- `refused`: every reason that applies, each with its numbers.
+
+A refusal is a result, not an error. A forecast is refused when:
+
+- the limit is unknown;
+- there are too few samples, or the window is too short;
+- the series resets inside the window (a restart);
+- it is not growing, including growth indistinguishable from none;
+- a line fits poorly (a sawtooth, a GC cycle, a step);
+- it is already at the limit.
+
+The band is where the fit's confidence band, ŷ(t) ± k·s·√(1/n + (t−t̄)²/Sxx),
+meets the limit. The upper edge gives the earliest crossing and the lower edge
+the latest. It is a band of plausible crossings, never a probability. The
+thresholds in `ForecastPolicy` are provisional until the development split of
+the lab scenarios sets them, and they are frozen before the held-out split is
+evaluated.
+
 Replay latency is not reported, because it is not real. The call trace shows
 durations only when a call actually took time, which is the live case.
 
