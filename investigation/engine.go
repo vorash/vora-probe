@@ -95,6 +95,7 @@ func (e *Engine) Step(input WorkerInput) (StepResult, error) {
 	s.env.Run.Used.Steps = s.env.Step
 
 	consumed := ""
+	contextName := ""
 	var action *gateway.Action
 	switch {
 	case input.Pending == nil:
@@ -107,7 +108,7 @@ func (e *Engine) Step(input WorkerInput) (StepResult, error) {
 		}
 		consumed = "infra"
 	case input.Pending.Kind == PendingModel:
-		done, pending, err := e.consumeModel(s, input.Pending)
+		done, pending, readContext, err := e.consumeModel(s, input.Pending)
 		if err != nil {
 			if errors.Is(err, errBudgetExhausted) {
 				return e.finish(s, RunBudgetExhausted, err.Error())
@@ -121,13 +122,33 @@ func (e *Engine) Step(input WorkerInput) (StepResult, error) {
 			return e.finalReport(s, now)
 		}
 		action = pending
+		contextName = readContext
 		consumed = "model"
+	case input.Pending.Kind == PendingContext:
+		// Reference joins the state as its own record. It is not an
+		// observation, so no fact, relation or claim can be built on it.
+		c := *input.Pending.Context
+		if !loaded(&s.env, c.Name) {
+			s.env.Contexts = append(s.env.Contexts, c)
+		}
+		consumed = "context"
 	}
 
 	if reason := e.exhausted(&s.env, now); reason != "" {
 		return e.finish(s, RunBudgetExhausted, reason)
 	}
 
+	if contextName != "" {
+		// A context read is charged like an evidence request: it is I/O the
+		// controller performs, and the budget bounds all of it.
+		s.env.Run.Used.InfraCalls++
+		if err := e.fit(&s.env); err != nil {
+			return e.finish(s, RunBudgetExhausted, err.Error())
+		}
+		result := s.result(ResultContextRequest, "reading context package "+contextName)
+		result.ContextRequest = contextName
+		return result, nil
+	}
 	if action != nil {
 		// A planner turn that named an action: ask the infrastructure for it.
 		if err := e.Policy.Authorize(*action); err != nil {
@@ -281,7 +302,7 @@ func (e *Engine) reassess(s *state) error {
 
 // consumeModel validates a planner turn and folds it into the state. It returns
 // the action the planner chose, and whether the investigation is finished.
-func (e *Engine) consumeModel(s *state, pending *Pending) (bool, *gateway.Action, error) {
+func (e *Engine) consumeModel(s *state, pending *Pending) (bool, *gateway.Action, string, error) {
 	response := pending.Model
 	s.env.ModelAttempts++
 	// A reply that took fallbacks cost more than one call. The first was
@@ -298,14 +319,19 @@ func (e *Engine) consumeModel(s *state, pending *Pending) (bool, *gateway.Action
 		// other invalid reply, whatever the model chose.
 		err = fmt.Errorf("action %q is not offered for this incident (severity %q)", response.NextAction.Kind, s.env.Incident.Severity)
 	}
+	if err == nil && response.ReadContext != "" {
+		if why := contextReadError(&s.env, response.ReadContext); why != "" {
+			err = fmt.Errorf("%s", why)
+		}
+	}
 	if err != nil {
 		if s.env.ModelAttempts < 2 {
 			s.env.Note = "previous planner response was rejected: " + err.Error()
 			e.decide(s, OutcomeContinue, "planner response rejected, retrying once: "+err.Error(), "")
-			return false, nil, nil
+			return false, nil, "", nil
 		}
 		e.decide(s, OutcomeEscalate, "planner response rejected twice: "+err.Error(), "")
-		return false, nil, fmt.Errorf("planner response rejected twice: %w", err)
+		return false, nil, "", fmt.Errorf("planner response rejected twice: %w", err)
 	}
 	s.env.ModelAttempts = 0
 
@@ -327,15 +353,19 @@ func (e *Engine) consumeModel(s *state, pending *Pending) (bool, *gateway.Action
 		s.env.Hypotheses = append(s.env.Hypotheses, HypothesisFromSpec(s.ids, spec))
 	}
 	if err := e.reassess(s); err != nil {
-		return false, nil, err
+		return false, nil, "", err
 	}
 
+	if response.ReadContext != "" {
+		e.decide(s, OutcomeContinue, response.Reason, "")
+		return false, nil, response.ReadContext, nil
+	}
 	if response.NextAction == nil {
 		e.decide(s, OutcomeStop, response.Reason, "")
-		return true, nil, nil
+		return true, nil, "", nil
 	}
 	e.decide(s, OutcomeContinue, response.Reason, "")
-	return false, response.NextAction, nil
+	return false, response.NextAction, "", nil
 }
 
 // offered reports whether an incident is offered an action kind.
@@ -426,7 +456,9 @@ func (e *Engine) modelRequest(env *StepEnvelope, phase, retryNote string) *Model
 			InfraCallsRemaining: env.Run.Budgets.MaxInfraCalls - env.Run.Used.InfraCalls,
 			SecondsRemaining:    remaining,
 		},
-		RetryNote: retryNote,
+		RetryNote:      retryNote,
+		ContextCatalog: env.ContextCatalog,
+		Contexts:       env.Contexts,
 	}
 }
 

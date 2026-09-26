@@ -47,6 +47,7 @@ type Pending struct {
 	Action   *gateway.Action   `json:"action,omitempty"`
 	Response *gateway.Response `json:"response,omitempty"`
 	Model    *ModelResponse    `json:"model,omitempty"`
+	Context  *Context          `json:"context,omitempty"`
 }
 
 func (p Pending) Validate() error {
@@ -59,6 +60,14 @@ func (p Pending) Validate() error {
 	case PendingModel:
 		if p.Model == nil {
 			return fmt.Errorf("a model result needs the response")
+		}
+		return nil
+	case PendingContext:
+		if p.Context == nil || !ContextNamePattern.MatchString(p.Context.Name) {
+			return fmt.Errorf("a context result needs a package with a valid name")
+		}
+		if len(p.Context.Body) > MaxContextBytes {
+			return fmt.Errorf("context package %q is %d bytes, over the %d byte bound", p.Context.Name, len(p.Context.Body), MaxContextBytes)
 		}
 		return nil
 	default:
@@ -115,6 +124,10 @@ type ModelRequest struct {
 	AllowedMetrics []string             `json:"allowed_metrics"`
 	Budget         BudgetsLeft          `json:"budget"`
 	RetryNote      string               `json:"retry_note,omitempty"`
+	// ContextCatalog is the reference the planner may read; Contexts are the
+	// packages it has read. Neither is evidence.
+	ContextCatalog []ContextSummary `json:"context_catalog,omitempty"`
+	Contexts       []Context        `json:"contexts,omitempty"`
 }
 
 type BudgetsLeft struct {
@@ -138,6 +151,9 @@ type ModelResponse struct {
 	Hypotheses    []HypothesisSpec `json:"hypotheses"`
 	NextAction    *gateway.Action  `json:"next_action,omitempty"`
 	Reason        string           `json:"reason"`
+	// ReadContext names a context package to read before the next evidence
+	// request. It is reference, not evidence, and never goes to the gateway.
+	ReadContext string `json:"read_context,omitempty"`
 
 	// The fields below are set by the planner client, never by the model: its
 	// reply is decoded into the three fields above alone.
@@ -179,6 +195,9 @@ func (m ModelResponse) Validate(phase string) error {
 			return fmt.Errorf("planner action: %w", err)
 		}
 	}
+	if m.ReadContext != "" && m.NextAction != nil {
+		return fmt.Errorf("a reply reads a context package or requests evidence, not both")
+	}
 	return nil
 }
 
@@ -211,8 +230,12 @@ type StepEnvelope struct {
 	Decisions      []Decision      `json:"decisions"`
 	Trace          []Call          `json:"trace,omitempty"`
 	EvaluatorCalls []EvaluatorCall `json:"evaluator_calls,omitempty"`
-	Counters       map[string]int  `json:"counters,omitempty"`
-	Note           string          `json:"note,omitempty"`
+	// ContextCatalog is set by the controller at the start of a run, because
+	// the worker has no filesystem; Contexts are the packages read so far.
+	ContextCatalog []ContextSummary `json:"context_catalog,omitempty"`
+	Contexts       []Context        `json:"contexts,omitempty"`
+	Counters       map[string]int   `json:"counters,omitempty"`
+	Note           string           `json:"note,omitempty"`
 }
 
 func (e StepEnvelope) Validate(maxBytes int64) error {
@@ -247,7 +270,9 @@ type StepResult struct {
 	Run           Run             `json:"run"`
 	ModelRequest  *ModelRequest   `json:"model_request,omitempty"`
 	InfraRequest  *gateway.Action `json:"infra_request,omitempty"`
-	Report        *Report         `json:"report,omitempty"`
-	Decision      *Decision       `json:"decision,omitempty"`
-	Envelope      StepEnvelope    `json:"envelope"`
+	// ContextRequest names the context package the controller should read.
+	ContextRequest string       `json:"context_request,omitempty"`
+	Report         *Report      `json:"report,omitempty"`
+	Decision       *Decision    `json:"decision,omitempty"`
+	Envelope       StepEnvelope `json:"envelope"`
 }

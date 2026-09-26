@@ -130,6 +130,18 @@ func (r Report) Markdown() string {
 		b.WriteString("\n")
 	}
 
+	if len(r.Contexts) > 0 {
+		b.WriteString("## Context consulted (not evidence)\n\n")
+		for _, c := range r.Contexts {
+			if c.Unavailable != "" {
+				fmt.Fprintf(&b, "- `%s`: unavailable (%s)\n", c.Name, c.Unavailable)
+				continue
+			}
+			fmt.Fprintf(&b, "- `%s` (%s)\n", c.Name, c.Digest)
+		}
+		b.WriteString("\n")
+	}
+
 	b.WriteString("## Evidence index\n\n")
 	seen := map[string]bool{}
 	for _, group := range [][]EvidenceLink{r.Supporting, r.Contradicting, r.InsufficientContext} {

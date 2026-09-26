@@ -216,6 +216,8 @@ type runConfig struct {
 	// evidenceURL is where a human opens Prometheus evidence. When set, the
 	// report's evidence links carry a link to the exact query and window.
 	evidenceURL string
+	// contexts are the reference packages the planner may read.
+	contexts ContextSource
 }
 
 type loopResult struct {
@@ -248,6 +250,14 @@ func runLoop(ctx context.Context, cfg runConfig) (loopResult, error) {
 		SchemaVersion: gateway.SchemaVersion,
 		Incident:      cfg.incident,
 		Run:           run,
+	}
+	if cfg.contexts != nil {
+		// The worker has no filesystem, so the catalog travels in the state.
+		catalog, err := cfg.contexts.Catalog()
+		if err != nil {
+			return loopResult{}, fmt.Errorf("context catalog: %w", err)
+		}
+		env.ContextCatalog = catalog
 	}
 	// Teardown must survive a cancelled context: if the run is abandoned, the
 	// sandbox still has to go away, or the next attempt inherits a leak.
@@ -497,6 +507,27 @@ func stepOnce(
 			Result:  result,
 			Pending: &investigation.Pending{Kind: investigation.PendingInfra, Action: &action, Response: &response},
 		}, env, nil
+	}
+	if result.Kind == investigation.ResultContextRequest {
+		name := result.ContextRequest
+		target := "context:" + name
+		if err := cfg.journal.Append(store.Event{
+			RunID: cfg.runID, IncidentID: env.Incident.ID, Step: result.Step, Kind: store.EventRequest,
+			At: cfg.now(), Target: target, Payload: mustJSON(map[string]string{"context": name}),
+		}); err != nil {
+			return stepOutcome{}, env, err
+		}
+		c := investigation.Context{Name: name, Unavailable: "no context packages are configured"}
+		if cfg.contexts != nil {
+			c = cfg.contexts.Load(name)
+		}
+		if err := cfg.journal.Append(store.Event{
+			RunID: cfg.runID, IncidentID: env.Incident.ID, Step: result.Step, Kind: store.EventResult,
+			At: cfg.now(), Target: target, Payload: mustJSON(investigation.ContextRef{Name: c.Name, Digest: c.Digest, Unavailable: c.Unavailable}),
+		}); err != nil {
+			return stepOutcome{}, env, err
+		}
+		return stepOutcome{Result: result, Pending: &investigation.Pending{Kind: investigation.PendingContext, Context: &c}}, env, nil
 	}
 	return stepOutcome{Result: result}, env, nil
 }

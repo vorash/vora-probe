@@ -38,6 +38,9 @@ type Report struct {
 	Arm            string          `json:"arm"`
 	ArmVersion     string          `json:"arm_version"`
 	EvaluatorCalls []EvaluatorCall `json:"evaluator_calls,omitempty"`
+	// Contexts are the reference packages the planner read. They are listed
+	// apart from the evidence because they are not evidence.
+	Contexts []ContextRef `json:"contexts,omitempty"`
 }
 
 type ClaimReport struct {
@@ -189,6 +192,7 @@ func BuildReport(env *StepEnvelope, policy ClaimPolicy, now time.Time) (Report, 
 	report.Arm, report.ArmVersion = armOf(env)
 	report.EvaluatorCalls = env.EvaluatorCalls
 	report.Impact = impactSummary(facts)
+	report.Contexts = contextRefs(env)
 	report.Summary = summary(env, leading)
 	report.Recommendation = recommend(env, *leading)
 	_ = now
@@ -594,6 +598,7 @@ func notConcluded(env *StepEnvelope, facts Facts, byID map[string]Observation) R
 	}
 	report.Arm, report.ArmVersion = armOf(env)
 	report.EvaluatorCalls = env.EvaluatorCalls
+	report.Contexts = contextRefs(env)
 	stopped := fmt.Sprintf("the investigation did not conclude: it ended as %s (%s)", env.Run.Status, env.Run.Reason)
 	report.Summary = fmt.Sprintf("%s reported: %s\nNot concluded. The run ended as %s: %s. No finding is drawn from partial evidence.\n",
 		env.Incident.Environment, env.Incident.Symptom, env.Run.Status, env.Run.Reason)
