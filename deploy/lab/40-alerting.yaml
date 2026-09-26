@@ -1,0 +1,114 @@
+# Alertmanager for the lab: the lab Prometheus fires the rules in
+# 30-observability.yaml here, and this routes them to `vora-probe serve`.
+#
+# Single replica, no clustering, no persistence: silences and notification
+# state reset with the pod, like the rest of the disposable lab. ClusterIP
+# only; reach the UI with `kubectl port-forward`.
+#
+# Until `vora-probe serve` is deployed every notification goes to `discard`.
+# To deliver, add to `receivers`:
+#
+#   - name: vora-probe
+#     webhook_configs:
+#       - url: http://<serve-service>.probe-lab.svc:<port>/webhook/alertmanager
+#         send_resolved: true
+#         http_config:
+#           authorization:
+#             credentials_file: /etc/alertmanager/secrets/token
+#
+# point both routes at it, and mount the bearer token from a Secret at
+# /etc/alertmanager/secrets.
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: alertmanager-config
+  namespace: probe-lab
+data:
+  alertmanager.yml: |
+    route:
+      receiver: discard
+      # Matches the intake's fixtures: one incident per alert and namespace.
+      group_by: [alertname, namespace]
+      group_wait: 30s
+      group_interval: 5m
+      repeat_interval: 4h
+      routes:
+        # The heartbeat repeats often so its absence is noticed quickly.
+        - matchers: ['alertname = "Watchdog"']
+          receiver: discard
+          group_wait: 0s
+          group_interval: 1m
+          repeat_interval: 5m
+    receivers:
+      - name: discard
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: alertmanager
+  namespace: probe-lab
+  labels:
+    app: alertmanager
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: alertmanager
+  template:
+    metadata:
+      labels:
+        app: alertmanager
+    spec:
+      # Alertmanager never talks to the Kubernetes API.
+      automountServiceAccountToken: false
+      containers:
+        - name: alertmanager
+          image: prom/alertmanager:v0.34.1
+          args:
+            - --config.file=/etc/alertmanager/alertmanager.yml
+            - --storage.path=/alertmanager
+            - --web.external-url=http://alertmanager.probe-lab.svc:9093
+            # Single replica: no gossip listener.
+            - --cluster.listen-address=
+          ports:
+            - name: http
+              containerPort: 9093
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              cpu: 100m
+              memory: 128Mi
+          volumeMounts:
+            - name: config
+              mountPath: /etc/alertmanager
+            - name: data
+              mountPath: /alertmanager
+          readinessProbe:
+            httpGet:
+              path: /-/ready
+              port: http
+            periodSeconds: 5
+      volumes:
+        - name: config
+          configMap:
+            name: alertmanager-config
+        - name: data
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: alertmanager
+  namespace: probe-lab
+  labels:
+    app: alertmanager
+spec:
+  selector:
+    app: alertmanager
+  ports:
+    - name: http
+      port: 9093
+      targetPort: http

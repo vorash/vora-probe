@@ -16,6 +16,7 @@ runs the Vora runner.
 | `10-rbac.yaml` | `probe-investigator` (read-only, namespaced) and the scrape identities |
 | `20-memory-test.yaml` | the workload and `unrelated-api`, the rollout for the misleading case |
 | `30-observability.yaml` | Prometheus (cAdvisor + app scrape) and kube-state-metrics |
+| `40-alerting.yaml` | Alertmanager; the alert rules live in `30-observability.yaml` |
 | `memory-test/` | the workload's source; its own Go module |
 | `build-image.sh` | build the workload image and import it into the node |
 | `inject.sh` | operator-only fault injection |
@@ -29,7 +30,9 @@ $K apply -f 00-namespace.yaml
 $K apply -f 10-rbac.yaml
 $K apply -f 20-memory-test.yaml
 $K apply -f 30-observability.yaml
+$K apply -f 40-alerting.yaml
 $K -n probe-lab rollout status deploy/prometheus
+$K -n probe-lab rollout status deploy/alertmanager
 ```
 
 Smoke test — one cAdvisor series and one app series, through the same ports the
@@ -41,6 +44,31 @@ curl -s 'localhost:9090/api/v1/query' --data-urlencode \
   'query=container_memory_working_set_bytes{pod=~"memory-test-.*"}' | head -c 400
 curl -s 'localhost:9090/api/v1/query' --data-urlencode \
   'query=request_latency_p99_seconds{service="memory-test"}' | head -c 400
+```
+
+## Alerting
+
+Prometheus evaluates four rules, all scoped to `probe-lab`: `Watchdog` (always
+firing, the heartbeat), `ContainerOOMKilled`, `ContainerRestartLoop` (restarts
+that were not OOM kills) and `ContainerMemoryNearLimit` (working set above 90%
+of the limit, no `for`, because `inject.sh ramp` holds for only 30s). Each
+alert except `Watchdog` carries `service`, the container name, for the intake.
+
+Alertmanager groups by `alertname` and `namespace` and, until `vora-probe
+serve` is deployed, discards every notification; `40-alerting.yaml` describes
+the webhook receiver to add. Neither Prometheus nor Alertmanager reloads its
+ConfigMap, so after a config change restart it (this drops Prometheus' 6h of
+series):
+
+```bash
+$K -n probe-lab rollout restart deploy/prometheus deploy/alertmanager
+```
+
+Check that alerting works:
+
+```bash
+$K -n probe-lab port-forward svc/alertmanager 9093:9093 &
+curl -s localhost:9093/api/v2/alerts | jq -r '.[].labels.alertname'   # Watchdog, at least
 ```
 
 ## Why there is no Grafana
