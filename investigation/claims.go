@@ -3,6 +3,7 @@ package investigation
 import (
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/vorash/vora-probe/gateway"
@@ -22,6 +23,10 @@ const (
 	ClaimResourceSaturation     ClaimKind = "resource_saturation"
 	ClaimNonMemoryRestart       ClaimKind = "non_memory_restart"
 	ClaimUnknownCause           ClaimKind = "unknown_cause"
+	// ClaimExhaustionForecast is a statement about the future: the resource
+	// reaches its limit within the horizon if the current growth persists. It
+	// is only ever stated conditionally, in words code renders.
+	ClaimExhaustionForecast ClaimKind = "exhaustion_forecast"
 )
 
 // AllClaimKinds is the closed set of assertions Probe understands. Model output
@@ -34,6 +39,7 @@ var AllClaimKinds = []ClaimKind{
 	ClaimResourceSaturation,
 	ClaimNonMemoryRestart,
 	ClaimUnknownCause,
+	ClaimExhaustionForecast,
 }
 
 // overclaimKinds assert more than this slice collects evidence for. They may be
@@ -88,6 +94,9 @@ type ClaimPolicy struct {
 	// ImpactRatio is how far above the pre-change baseline a measurement must be
 	// before it counts as the impact the incident is about.
 	ImpactRatio float64
+	// Forecast holds the thresholds an exhaustion forecast must meet, and the
+	// reset drop that splits a memory series at restarts for the leak rule.
+	Forecast ForecastPolicy
 }
 
 func DefaultClaimPolicy() ClaimPolicy {
@@ -98,6 +107,7 @@ func DefaultClaimPolicy() ClaimPolicy {
 		CPUSaturationThreshold: 0.85,
 		MemoryLimitRatio:       0.9,
 		ImpactRatio:            2.0,
+		Forecast:               DefaultForecastPolicy(),
 	}
 }
 
@@ -129,6 +139,8 @@ func (p ClaimPolicy) Evaluate(c Claim, f Facts, obs map[string]Observation) Clai
 		p.evalNonMemoryRestart(&v, c, f)
 	case ClaimUnknownCause:
 		// "Inconclusive" is always an admissible result.
+	case ClaimExhaustionForecast:
+		p.evalExhaustionForecast(&v, c, f)
 	}
 	v.Allowed = len(v.Reasons) == 0
 	v.Overclaim = IsOverclaimKind(c.Kind) && !v.Allowed
@@ -186,13 +198,80 @@ func (p ClaimPolicy) evalMemoryLeak(v *ClaimVerdict, c Claim, f Facts) {
 		v.Narrowed = "memory rose over a short window, which may be a spike rather than a leak"
 		return
 	}
-	if !st.MonotonicIncrease {
-		v.Reasons = append(v.Reasons, "memory series is not monotonically increasing, so it does not evidence a leak")
-		v.Narrowed = "memory fluctuated rather than grew monotonically"
+	// One climb cannot tell a leak from a workload that needs more memory: both
+	// grow until something stops them. A leak is what persists: after a
+	// restart frees everything, the growth resumes. So the series is split at
+	// its resets, and every segment must itself be sustained growth.
+	segments := splitAtResets(f.MemorySamples(), p.Forecast.ResetDrop)
+	if len(segments) < 2 {
+		v.Reasons = append(v.Reasons, "one continuous climb cannot tell a leak from workload growth; a leak must be seen to resume after a restart")
+		if growing(segments[0]) {
+			v.Narrowed = fmt.Sprintf("memory grew for %s; whether it is a leak is not established", FormatDuration(st.Span))
+		} else {
+			v.Narrowed = "memory fluctuated rather than grew"
+		}
 		return
 	}
-	v.Narrowed = fmt.Sprintf("sustained monotonically increasing memory over %s; allocation-level cause unproven",
-		FormatDuration(st.Span))
+	for i, seg := range segments {
+		ss, _ := Summarize(seg)
+		if ss.Count < p.MinLeakSamples || ss.Span < p.MinLeakSpan || !growing(seg) {
+			v.Reasons = append(v.Reasons, fmt.Sprintf(
+				"segment %d of %d (between restarts) is %d samples over %s and does not show sustained growth, so growth is not seen to resume",
+				i+1, len(segments), ss.Count, FormatDuration(ss.Span)))
+			v.Narrowed = "memory rose and fell with the restarts; a leak that persists across them is not established"
+			return
+		}
+	}
+	v.Narrowed = fmt.Sprintf("memory grew again after each of %d restarts over %s; allocation-level cause unproven",
+		len(segments)-1, FormatDuration(st.Span))
+}
+
+// splitAtResets cuts a series where a sample falls by more than drop of the one
+// before it: a restart freeing the working set.
+func splitAtResets(in []Sample, drop float64) [][]Sample {
+	s := append([]Sample(nil), in...)
+	sort.SliceStable(s, func(i, j int) bool { return s[i].At.Before(s[j].At) })
+	var out [][]Sample
+	start := 0
+	for i := 1; i < len(s); i++ {
+		if prev := s[i-1].Value; prev > 0 && (prev-s[i].Value)/prev > drop {
+			out = append(out, s[start:i])
+			start = i
+		}
+	}
+	return append(out, s[start:])
+}
+
+// growing is a segment that ends higher than it starts with a positive trend.
+func growing(seg []Sample) bool {
+	st, err := Summarize(seg)
+	return err == nil && st.Count >= 2 && st.Last > st.First && st.SlopePerSecond > 0
+}
+
+// evalExhaustionForecast admits a forecast only when forecast/v1 makes one
+// from the retained series and limit. Its statement is rendered here, never
+// taken from the planner: a forecast is always conditional, and "the service
+// will crash" is not a statement the evidence can support.
+func (p ClaimPolicy) evalExhaustionForecast(v *ClaimVerdict, c Claim, f Facts) {
+	limit, known := f.MemoryLimit()
+	fc := ForecastExhaustion(f.MemorySamples(), limit.Value, known, p.Forecast)
+	switch fc.Outcome {
+	case ForecastRefused:
+		for _, r := range fc.Reasons {
+			v.Reasons = append(v.Reasons, "no forecast: "+r)
+		}
+		v.Narrowed = "a crossing of the memory limit is not foreseeable from the retained evidence"
+		return
+	case ForecastBeyondHorizon:
+		v.Reasons = append(v.Reasons, fmt.Sprintf("at the current rate the limit is reached in %s, beyond the %s horizon",
+			FormatDuration(fc.ETA), FormatDuration(p.Forecast.Horizon)))
+		v.Narrowed = fmt.Sprintf("memory is growing, but does not reach its limit within %s", FormatDuration(p.Forecast.Horizon))
+		return
+	}
+	v.Claim.Statement = fmt.Sprintf("%s: memory %s", c.Subject, strings.TrimPrefix(fc.Statement(), "at the current rate of growth the series "))
+	if !citesAny(c.Evidence, obsIDsOfSamples(f.Memory)) || !citesAny(c.Evidence, []string{limit.ObsID}) {
+		v.Reasons = append(v.Reasons, "a forecast must cite both the memory series and the limit it is measured against")
+	}
 }
 
 func (p ClaimPolicy) evalDeployment(v *ClaimVerdict, c Claim, f Facts, obs map[string]Observation) {

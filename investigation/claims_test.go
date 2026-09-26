@@ -3,6 +3,7 @@ package investigation_test
 import (
 	"encoding/json"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -246,7 +247,11 @@ func TestMemoryLeakRefusedOnSawtooth(t *testing.T) {
 	}
 }
 
-func TestMemoryLeakAllowedOnSustainedGrowth(t *testing.T) {
+// One sustained climb cannot tell a leak from a workload that needs more
+// memory: both grow until something stops them. It is the exact shape a
+// forecast looks at, and calling it a leak would turn every forecast into a
+// diagnosis. The growth is stated; the leak is not.
+func TestMemoryLeakRefusedOnASingleClimb(t *testing.T) {
 	entity := "payment-api"
 	var samples []gateway.MetricSample
 	for i := range 11 {
@@ -256,11 +261,32 @@ func TestMemoryLeakAllowedOnSustainedGrowth(t *testing.T) {
 
 	facts, byID, ids := build(t, entity, memory)
 	v := evaluate(t, investigation.ClaimMemoryLeak, entity, ids, facts, byID)
-	if !v.Allowed {
-		t.Fatalf("sustained monotonic growth should be admissible: %v", v.Reasons)
+	if v.Allowed {
+		t.Fatal("a single climb, however sustained, must not be asserted as a leak")
 	}
-	if v.Narrowed == "" {
-		t.Fatal("even an admissible leak claim must state that the allocation-level cause is unproven")
+	if !strings.Contains(v.Narrowed, "grew") || !strings.Contains(v.Narrowed, "not established") {
+		t.Fatalf("the refusal must still state the growth, and that a leak is not established: %q", v.Narrowed)
+	}
+}
+
+// A leak is what persists: after a restart frees everything, the growth
+// resumes. That is admissible, still with the allocation-level cause unproven.
+func TestMemoryLeakAllowedWhenGrowthResumesAfterARestart(t *testing.T) {
+	entity := "payment-api"
+	var samples []gateway.MetricSample
+	for i := range 24 {
+		v := float64(1000 + (i%12)*100) // climbs, is restarted at i=12, climbs again
+		samples = append(samples, gateway.MetricSample{At: at(12, 0).Add(time.Duration(i) * 2 * time.Minute), Value: v})
+	}
+	memory := metricObs(t, "OBS-0001", entity, "container_memory_working_set_bytes", samples...)
+
+	facts, byID, ids := build(t, entity, memory)
+	v := evaluate(t, investigation.ClaimMemoryLeak, entity, ids, facts, byID)
+	if !v.Allowed {
+		t.Fatalf("growth that resumes after a restart should be admissible: %v", v.Reasons)
+	}
+	if !strings.Contains(v.Narrowed, "after each of 1 restarts") || !strings.Contains(v.Narrowed, "unproven") {
+		t.Fatalf("the verdict must say the growth resumed, and that the cause is unproven: %q", v.Narrowed)
 	}
 }
 

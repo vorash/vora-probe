@@ -2,6 +2,7 @@ package investigation
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/vorash/vora-probe/gateway"
@@ -94,6 +95,43 @@ func (b *relationBuilder) memoryLimit(f Facts) {
 	if len(f.CPU) > 0 {
 		b.addAll(obsIDsOfSamples(f.CPU), Neutral, "cpu usage does not bear on a memory-limit termination")
 	}
+}
+
+// exhaustionForecast labels evidence against "the limit is reached within the
+// horizon if the growth persists", using the same forecast/v1 derivation the
+// claims policy admits the claim with, so the labels and the verdict cannot
+// disagree about what the series shows.
+func (b *relationBuilder) exhaustionForecast(f Facts) {
+	limit, known := f.MemoryLimit()
+	fc := ForecastExhaustion(f.MemorySamples(), limit.Value, known, b.policy.Forecast)
+	ids := obsIDsOfSamples(f.Memory)
+	switch {
+	case fc.Outcome == ForecastWithinHorizon:
+		b.addAll(ids, Supports, fmt.Sprintf("at the current rate the working set reaches its limit in %s (between %s and %s) if the growth persists",
+			FormatDuration(fc.ETA), FormatDuration(fc.Earliest), FormatDuration(fc.Latest)))
+		b.add(limit.ObsID, Supports, "the limit the forecast crossing is measured against")
+	case fc.Outcome == ForecastBeyondHorizon:
+		b.addAll(ids, Contradicts, fmt.Sprintf("the working set grows, but reaches its limit only in %s, beyond the %s horizon",
+			FormatDuration(fc.ETA), FormatDuration(b.policy.Forecast.Horizon)))
+	case refusedFor(fc, RefuseNotGrowing, RefusePoorFit, RefuseResetInWindow, RefuseAtOrOverLimit):
+		b.addAll(ids, Contradicts, "the series is not a trend toward the limit: "+strings.Join(fc.Reasons, "; "))
+	default:
+		b.addAll(ids, InsufficientContext, "too little to forecast from: "+strings.Join(fc.Reasons, "; "))
+	}
+	if len(f.CPU) > 0 {
+		b.addAll(obsIDsOfSamples(f.CPU), Neutral, "cpu usage does not bear on when memory reaches its limit")
+	}
+}
+
+func refusedFor(fc Forecast, any ...ForecastRefusal) bool {
+	for _, r := range fc.Refusals {
+		for _, a := range any {
+			if r == a {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func (b *relationBuilder) nonMemoryRestart(f Facts) {
