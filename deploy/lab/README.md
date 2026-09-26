@@ -122,6 +122,23 @@ measures generalisation, not memory of seeds. `memory-test/scenario_test.go`
 pins every scenario's ground truth for both families across seeds, and runs
 under `make check`.
 
+Record scenarios as frozen fixtures with `record-scenarios.sh`, run from a
+workstation. For each `<family>:<scenario>:<seed>` it injects, waits for the
+first kill or the scenario's deadline, and reads the run back straight away,
+because Prometheus keeps 6h. It records the working set and the limit through
+the API server's proxy to Prometheus, the kill from the pod status, and the
+ground truth from the pod log. One ssh control connection serves the whole
+series.
+
+```bash
+deploy/lab/record-scenarios.sh test/fixtures/forecast dev:ramp:1 dev:sawtooth:1 held-out:ramp:1
+go test ./evaluation -run TestForecastCaseIntegrity -update   # freeze the digests
+go run ./cmd/vora-probe evaluate --suite forecast --split dev
+```
+
+Each case is `series.json` (the input, digest-signed) beside
+`ground-truth.json` (the answer key, read only by the harness).
+
 Missing *memory* evidence is not a fault: the controller asks for a fixed window
 before the workload existed, and the gateway reports `unavailable`. That keeps
 "missing evidence" a property of the query rather than a staged illusion.
