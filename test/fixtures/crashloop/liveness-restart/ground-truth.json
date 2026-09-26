@@ -1,0 +1,25 @@
+{
+  "schema_version": "probe/v1",
+  "case": "liveness-restart",
+  "notes": "Exit 137 with reason Error is a kubelet kill after liveness failures, not a memory kill: memory stays near 120 MiB against 512 MiB. The probe restart is established; the crash and the memory kill are not.",
+  "expected": {
+    "fault_domain": "kubernetes",
+    "leading_claim": "liveness_probe_restart",
+    "cause_asserted": true,
+    "allowed_claims": [
+      "liveness_probe_restart"
+    ],
+    "forbidden_claims": [
+      "application_crash",
+      "memory_limit_termination",
+      "memory_leak",
+      "deployment_regression"
+    ],
+    "required_observation_types": [
+      "k8s_container_state",
+      "k8s_event",
+      "metric"
+    ],
+    "recommendation_executed": false
+  }
+}

@@ -1,0 +1,493 @@
+{
+  "schema_version": "probe/v1",
+  "case": "misleading-rollout",
+  "description": "A rollout completed at 12:16, two minutes before latency jumped, but the container already crashed with exit 1 from 12:02 and query volume is flat. The crash is established; the rollout as its cause is not.",
+  "incident": {
+    "schema_version": "probe/v1",
+    "id": "INC-0103",
+    "environment": "lab",
+    "service": "payments-api",
+    "symptom": "payments-api crashes and p99 latency jumped",
+    "trigger": "manual",
+    "started_at": "2026-09-18T12:31:00Z",
+    "window": {
+      "start": "2026-09-18T12:00:00Z",
+      "end": "2026-09-18T12:30:00Z"
+    },
+    "status": "open",
+    "class": "crashloop"
+  },
+  "planner": [
+    {
+      "hypotheses": [
+        {
+          "statement": "the latest rollout of payments-api caused the crashes",
+          "fault_domain": "application",
+          "claim_kind": "deployment_regression",
+          "evidence_needed": [
+            "rollout time",
+            "mechanism evidence"
+          ]
+        },
+        {
+          "statement": "payments-api exits by itself with an application error",
+          "fault_domain": "application",
+          "claim_kind": "application_crash",
+          "evidence_needed": [
+            "termination exit code"
+          ]
+        },
+        {
+          "statement": "payments-api is restarted by the kubelet because its liveness probe fails",
+          "fault_domain": "kubernetes",
+          "claim_kind": "liveness_probe_restart",
+          "evidence_needed": [
+            "probe failure event",
+            "termination state"
+          ]
+        }
+      ],
+      "next_action": {
+        "kind": "kubernetes.deployments",
+        "entity": "payments-api",
+        "reason": "find recent rollouts"
+      },
+      "reason": "collect kubernetes.deployments"
+    },
+    {
+      "hypotheses": [
+        {
+          "statement": "the latest rollout of payments-api caused the crashes",
+          "fault_domain": "application",
+          "claim_kind": "deployment_regression",
+          "evidence_needed": [
+            "rollout time",
+            "mechanism evidence"
+          ]
+        },
+        {
+          "statement": "payments-api exits by itself with an application error",
+          "fault_domain": "application",
+          "claim_kind": "application_crash",
+          "evidence_needed": [
+            "termination exit code"
+          ]
+        },
+        {
+          "statement": "payments-api is restarted by the kubelet because its liveness probe fails",
+          "fault_domain": "kubernetes",
+          "claim_kind": "liveness_probe_restart",
+          "evidence_needed": [
+            "probe failure event",
+            "termination state"
+          ]
+        }
+      ],
+      "next_action": {
+        "kind": "kubernetes.containers",
+        "entity": "payments-api",
+        "reason": "read the recorded termination reason and exit code"
+      },
+      "reason": "collect kubernetes.containers"
+    },
+    {
+      "hypotheses": [
+        {
+          "statement": "the latest rollout of payments-api caused the crashes",
+          "fault_domain": "application",
+          "claim_kind": "deployment_regression",
+          "evidence_needed": [
+            "rollout time",
+            "mechanism evidence"
+          ]
+        },
+        {
+          "statement": "payments-api exits by itself with an application error",
+          "fault_domain": "application",
+          "claim_kind": "application_crash",
+          "evidence_needed": [
+            "termination exit code"
+          ]
+        },
+        {
+          "statement": "payments-api is restarted by the kubelet because its liveness probe fails",
+          "fault_domain": "kubernetes",
+          "claim_kind": "liveness_probe_restart",
+          "evidence_needed": [
+            "probe failure event",
+            "termination state"
+          ]
+        }
+      ],
+      "next_action": {
+        "kind": "kubernetes.events",
+        "entity": "payments-api",
+        "reason": "read the events around the restarts",
+        "window": {
+          "start": "2026-09-18T12:00:00Z",
+          "end": "2026-09-18T12:30:00Z"
+        }
+      },
+      "reason": "collect kubernetes.events"
+    },
+    {
+      "hypotheses": [
+        {
+          "statement": "the latest rollout of payments-api caused the crashes",
+          "fault_domain": "application",
+          "claim_kind": "deployment_regression",
+          "evidence_needed": [
+            "rollout time",
+            "mechanism evidence"
+          ]
+        },
+        {
+          "statement": "payments-api exits by itself with an application error",
+          "fault_domain": "application",
+          "claim_kind": "application_crash",
+          "evidence_needed": [
+            "termination exit code"
+          ]
+        },
+        {
+          "statement": "payments-api is restarted by the kubelet because its liveness probe fails",
+          "fault_domain": "kubernetes",
+          "claim_kind": "liveness_probe_restart",
+          "evidence_needed": [
+            "probe failure event",
+            "termination state"
+          ]
+        }
+      ],
+      "next_action": {
+        "kind": "metrics.query",
+        "entity": "payments-api",
+        "reason": "measure the impact around the rollout",
+        "metric": "request_latency_p99_seconds",
+        "window": {
+          "start": "2026-09-18T12:00:00Z",
+          "end": "2026-09-18T12:30:00Z"
+        },
+        "resolution": "60s"
+      },
+      "reason": "collect metrics.query request_latency_p99_seconds"
+    },
+    {
+      "hypotheses": [
+        {
+          "statement": "the latest rollout of payments-api caused the crashes",
+          "fault_domain": "application",
+          "claim_kind": "deployment_regression",
+          "evidence_needed": [
+            "rollout time",
+            "mechanism evidence"
+          ]
+        },
+        {
+          "statement": "payments-api exits by itself with an application error",
+          "fault_domain": "application",
+          "claim_kind": "application_crash",
+          "evidence_needed": [
+            "termination exit code"
+          ]
+        },
+        {
+          "statement": "payments-api is restarted by the kubelet because its liveness probe fails",
+          "fault_domain": "kubernetes",
+          "claim_kind": "liveness_probe_restart",
+          "evidence_needed": [
+            "probe failure event",
+            "termination state"
+          ]
+        }
+      ],
+      "next_action": {
+        "kind": "metrics.query",
+        "entity": "payments-api",
+        "reason": "check whether database work changed across the rollout",
+        "metric": "db_query_count",
+        "window": {
+          "start": "2026-09-18T12:00:00Z",
+          "end": "2026-09-18T12:30:00Z"
+        },
+        "resolution": "60s"
+      },
+      "reason": "collect metrics.query db_query_count"
+    },
+    {
+      "hypotheses": [
+        {
+          "statement": "the latest rollout of payments-api caused the crashes",
+          "fault_domain": "application",
+          "claim_kind": "deployment_regression",
+          "evidence_needed": [
+            "rollout time",
+            "mechanism evidence"
+          ]
+        },
+        {
+          "statement": "payments-api exits by itself with an application error",
+          "fault_domain": "application",
+          "claim_kind": "application_crash",
+          "evidence_needed": [
+            "termination exit code"
+          ]
+        },
+        {
+          "statement": "payments-api is restarted by the kubelet because its liveness probe fails",
+          "fault_domain": "kubernetes",
+          "claim_kind": "liveness_probe_restart",
+          "evidence_needed": [
+            "probe failure event",
+            "termination state"
+          ]
+        }
+      ],
+      "reason": "the container crashes with exit 1, and the crashes began before the rollout; nothing changed across it"
+    }
+  ],
+  "evidence": [
+    {
+      "action": {
+        "kind": "kubernetes.deployments",
+        "entity": "payments-api",
+        "reason": "find recent rollouts"
+      },
+      "response": {
+        "schema_version": "probe/v1",
+        "kind": "kubernetes.deployments",
+        "entity": "payments-api",
+        "status": "ok",
+        "completeness": "complete",
+        "retrieved_at": "2026-09-18T12:31:04Z",
+        "query": {
+          "datasource": "kubernetes",
+          "query": "deployments -n lab payments-api"
+        },
+        "digest": "sha256:7a470b7c9de636011345f4011e1ac5beac39ffe7a6aa68f9dc084129b2a79e91",
+        "payload": {
+          "namespace": "lab",
+          "deployments": [
+            {
+              "name": "payments-api",
+              "namespace": "lab",
+              "replicas": 3,
+              "available_replicas": 2,
+              "rollout_completed_at": "2026-09-18T12:16:00Z"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "action": {
+        "kind": "kubernetes.containers",
+        "entity": "payments-api",
+        "reason": "read the recorded termination reason and exit code"
+      },
+      "response": {
+        "schema_version": "probe/v1",
+        "kind": "kubernetes.containers",
+        "entity": "payments-api",
+        "status": "ok",
+        "completeness": "complete",
+        "retrieved_at": "2026-09-18T12:31:05Z",
+        "query": {
+          "datasource": "kubernetes",
+          "query": "pods -n lab -l app=payments-api"
+        },
+        "digest": "sha256:04fa1b34dec242c6e90ffb7e80e7dea0d46580ec43623e192d2ffb03cef50fc0",
+        "payload": {
+          "namespace": "lab",
+          "pods": [
+            {
+              "name": "payments-api-6f8d9c5b7-k2w9r",
+              "namespace": "lab",
+              "phase": "Running",
+              "node": "mini-vora",
+              "start_time": "2026-09-18T11:30:00Z",
+              "containers": [
+                {
+                  "name": "app",
+                  "ready": false,
+                  "restart_count": 7,
+                  "state": "waiting",
+                  "last_terminated_at": "2026-09-18T12:24:30Z",
+                  "last_terminated_reason": "Error",
+                  "last_exit_code": 1,
+                  "reason": "CrashLoopBackOff"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "action": {
+        "kind": "kubernetes.events",
+        "entity": "payments-api",
+        "reason": "read the events around the restarts",
+        "window": {
+          "start": "2026-09-18T12:00:00Z",
+          "end": "2026-09-18T12:30:00Z"
+        }
+      },
+      "response": {
+        "schema_version": "probe/v1",
+        "kind": "kubernetes.events",
+        "entity": "payments-api",
+        "status": "ok",
+        "completeness": "complete",
+        "retrieved_at": "2026-09-18T12:31:07Z",
+        "query": {
+          "datasource": "kubernetes",
+          "query": "events -n lab -l app=payments-api"
+        },
+        "digest": "sha256:fd8c969f9ddea13ee880928cc0f885dc6fbc2c0cab5a4ea41c89878f78464a0c",
+        "payload": {
+          "namespace": "lab",
+          "events": [
+            {
+              "type": "Warning",
+              "reason": "BackOff",
+              "message": "Back-off restarting failed container app in pod payments-api-6f8d9c5b7-k2w9r",
+              "involved_object": "payments-api-6f8d9c5b7-k2w9r",
+              "count": 7,
+              "first_seen": "2026-09-18T12:02:00Z",
+              "last_seen": "2026-09-18T12:25:00Z"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "action": {
+        "kind": "metrics.query",
+        "entity": "payments-api",
+        "reason": "measure the impact around the rollout",
+        "metric": "request_latency_p99_seconds",
+        "window": {
+          "start": "2026-09-18T12:00:00Z",
+          "end": "2026-09-18T12:30:00Z"
+        },
+        "resolution": "60s"
+      },
+      "response": {
+        "schema_version": "probe/v1",
+        "kind": "metrics.query",
+        "entity": "payments-api",
+        "status": "ok",
+        "completeness": "complete",
+        "retrieved_at": "2026-09-18T12:31:08Z",
+        "query": {
+          "datasource": "prometheus",
+          "query": "request_latency_p99_seconds{service=\"payments-api\"}",
+          "params": {
+            "metric": "request_latency_p99_seconds"
+          },
+          "resolution": "60s"
+        },
+        "digest": "sha256:d3f1fcf8be69225355609eba6a896d178b78d4e45841e5cb1196a0dc7d77378f",
+        "payload": {
+          "metric": "request_latency_p99_seconds",
+          "unit": "seconds",
+          "samples": [
+            {
+              "at": "2026-09-18T12:00:00Z",
+              "value": 0.21
+            },
+            {
+              "at": "2026-09-18T12:05:00Z",
+              "value": 0.22
+            },
+            {
+              "at": "2026-09-18T12:10:00Z",
+              "value": 0.2
+            },
+            {
+              "at": "2026-09-18T12:15:00Z",
+              "value": 0.22
+            },
+            {
+              "at": "2026-09-18T12:18:00Z",
+              "value": 3.4
+            },
+            {
+              "at": "2026-09-18T12:24:00Z",
+              "value": 3.6
+            },
+            {
+              "at": "2026-09-18T12:30:00Z",
+              "value": 3.5
+            }
+          ]
+        }
+      }
+    },
+    {
+      "action": {
+        "kind": "metrics.query",
+        "entity": "payments-api",
+        "reason": "check whether database work changed across the rollout",
+        "metric": "db_query_count",
+        "window": {
+          "start": "2026-09-18T12:00:00Z",
+          "end": "2026-09-18T12:30:00Z"
+        },
+        "resolution": "60s"
+      },
+      "response": {
+        "schema_version": "probe/v1",
+        "kind": "metrics.query",
+        "entity": "payments-api",
+        "status": "ok",
+        "completeness": "complete",
+        "retrieved_at": "2026-09-18T12:31:09Z",
+        "query": {
+          "datasource": "prometheus",
+          "query": "db_query_count{service=\"payments-api\"}",
+          "params": {
+            "metric": "db_query_count"
+          },
+          "resolution": "60s"
+        },
+        "digest": "sha256:f655f86b40c4fd09c0388f4558b2dc0b57a36965e1fb0b92075e736669704f9a",
+        "payload": {
+          "metric": "db_query_count",
+          "unit": "count",
+          "samples": [
+            {
+              "at": "2026-09-18T12:00:00Z",
+              "value": 1500
+            },
+            {
+              "at": "2026-09-18T12:05:00Z",
+              "value": 1502
+            },
+            {
+              "at": "2026-09-18T12:10:00Z",
+              "value": 1504
+            },
+            {
+              "at": "2026-09-18T12:15:00Z",
+              "value": 1506
+            },
+            {
+              "at": "2026-09-18T12:18:00Z",
+              "value": 1505
+            },
+            {
+              "at": "2026-09-18T12:24:00Z",
+              "value": 1503
+            },
+            {
+              "at": "2026-09-18T12:30:00Z",
+              "value": 1501
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,25 @@
+{
+  "schema_version": "probe/v1",
+  "case": "misleading-rollout",
+  "notes": "The rollout sits two minutes before the latency jump, inside the proximity bound, but the crashes started at 12:02 and query volume is flat. Proximity must not be promoted to causation: the application crash is the finding, the rollout is not.",
+  "expected": {
+    "fault_domain": "application",
+    "leading_claim": "application_crash",
+    "cause_asserted": true,
+    "allowed_claims": [
+      "application_crash"
+    ],
+    "forbidden_claims": [
+      "deployment_regression",
+      "liveness_probe_restart",
+      "memory_limit_termination",
+      "memory_leak"
+    ],
+    "required_observation_types": [
+      "k8s_deployment",
+      "k8s_container_state",
+      "metric"
+    ],
+    "recommendation_executed": false
+  }
+}

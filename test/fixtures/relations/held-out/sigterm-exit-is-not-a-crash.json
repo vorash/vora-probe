@@ -1,0 +1,63 @@
+{
+  "schema_version": "probe/v1",
+  "id": "sigterm-exit-is-not-a-crash",
+  "split": "held-out",
+  "rationale": "Exit 143 is SIGTERM: something stopped the container. It is not an application exiting by itself with an error, so it cannot support a crash.",
+  "entity": "search-api",
+  "hypothesis": {
+    "statement": "search-api exits by itself with an application error",
+    "fault_domain": "application",
+    "claim_kind": "application_crash"
+  },
+  "evidence": [
+    {
+      "action": {
+        "kind": "kubernetes.containers",
+        "entity": "search-api",
+        "reason": "read the termination history"
+      },
+      "response": {
+        "schema_version": "probe/v1",
+        "kind": "kubernetes.containers",
+        "entity": "search-api",
+        "status": "ok",
+        "completeness": "complete",
+        "retrieved_at": "2026-09-18T12:31:07Z",
+        "query": {
+          "datasource": "kubernetes",
+          "query": "pods -n lab -l app=search-api"
+        },
+        "digest": "sha256:94a40b22c15b9e6cb62e02c63a27d4c0877e76f6cae6f31b45931fea88ea7532",
+        "payload": {
+          "namespace": "lab",
+          "pods": [
+            {
+              "name": "search-api-8b7c6d5f9-p4n2t",
+              "namespace": "lab",
+              "phase": "Running",
+              "node": "mini-vora",
+              "start_time": "2026-09-18T11:40:00Z",
+              "containers": [
+                {
+                  "name": "app",
+                  "ready": false,
+                  "restart_count": 5,
+                  "state": "waiting",
+                  "reason": "CrashLoopBackOff",
+                  "last_terminated_at": "2026-09-18T12:21:04Z",
+                  "last_terminated_reason": "Error",
+                  "last_exit_code": 143
+                }
+              ]
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "target": "OBS-0001",
+  "expected": "insufficient_context",
+  "forbidden": [
+    "supports"
+  ]
+}

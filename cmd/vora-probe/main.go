@@ -189,11 +189,10 @@ func allowedLabel(allowed bool) string {
 }
 
 func verify(args []string) error {
-	root := filepath.Join(fixtures.Root(), "oom")
+	dirs, err := fixtures.AllCases(fixtures.Root())
 	if len(args) > 0 {
-		root = args[0]
+		dirs, err = fixtures.Cases(args[0])
 	}
-	dirs, err := fixtures.Cases(root)
 	if err != nil {
 		return err
 	}

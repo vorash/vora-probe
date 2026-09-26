@@ -426,6 +426,14 @@ func (p ClaimPolicy) evalLivenessRestart(v *ClaimVerdict, c Claim, f Facts) {
 		v.Narrowed = "the liveness probe is failing; a restart caused by it is not evidenced"
 		return
 	}
+	if exits := f.SelfExits(); len(exits) > 0 {
+		// The mirror of the crash rule: an application exit beside a failing
+		// probe does not show that the kubelet did the killing.
+		v.Reasons = append(v.Reasons, "the container also exited by itself with an application code, so whether the kubelet restarted it is not established")
+		v.Narrowed = fmt.Sprintf("the container last exited with code %s while its liveness probe was failing; which came first is not established",
+			exitCode(exits[0].LastExitCode))
+		return
+	}
 	if !citesAny(c.Evidence, obsIDsOfEvents(liveness)) {
 		v.Reasons = append(v.Reasons, "claim does not cite the liveness probe failure it rests on")
 	}

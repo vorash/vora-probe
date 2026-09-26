@@ -15,13 +15,16 @@ var update = flag.Bool("update", false, "re-freeze fixture payload digests and r
 // TestFixtureIntegrity freezes and verifies every bundle. Run with -update after
 // intentionally changing a payload.
 func TestFixtureIntegrity(t *testing.T) {
-	root := filepath.Join(Root(), "oom")
-	dirs, err := Cases(root)
+	for _, class := range IncidentClasses {
+		// Every class ships with its four agreed cases, its refusal and
+		// misleading-correlation controls among them.
+		if dirs, err := Cases(filepath.Join(Root(), class)); err != nil || len(dirs) < 4 {
+			t.Fatalf("%s: expected at least four cases, found %d (%v)", class, len(dirs), err)
+		}
+	}
+	dirs, err := AllCases(Root())
 	if err != nil {
 		t.Fatalf("list cases: %v", err)
-	}
-	if len(dirs) < 4 {
-		t.Fatalf("expected at least the four agreed cases, found %d", len(dirs))
 	}
 	for _, dir := range dirs {
 		t.Run(filepath.Base(dir), func(t *testing.T) {
@@ -95,8 +98,7 @@ func TestGroundTruthIsSeparate(t *testing.T) {
 // over each case's recorded evidence and asserts that the expected leading claim
 // is admissible while every forbidden claim is refused.
 func TestCaseExpectations(t *testing.T) {
-	root := filepath.Join(Root(), "oom")
-	dirs, err := Cases(root)
+	dirs, err := AllCases(Root())
 	if err != nil {
 		t.Fatalf("list cases: %v", err)
 	}

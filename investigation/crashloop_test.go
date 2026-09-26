@@ -49,6 +49,19 @@ func TestAReadinessFailureDoesNotExplainRestarts(t *testing.T) {
 	}
 }
 
+// A failing liveness probe beside an application exit is ambiguous both ways:
+// neither the probe restart nor the crash may be asserted over the other.
+func TestALivenessFailureBesideASelfExitIsNotAProbeRestart(t *testing.T) {
+	entity := "checkout-api"
+	crash := containerObs(t, "OBS-0001", entity, exited(1, "Error", 5))
+	liveness := eventObs(t, "OBS-0002", entity, probeEvent("Liveness"))
+	facts, byID, ids := build(t, entity, crash, liveness)
+	v := evaluate(t, investigation.ClaimLivenessProbeRestart, entity, ids, facts, byID)
+	if v.Allowed || !strings.Contains(v.Narrowed, "which came first is not established") {
+		t.Fatalf("verdict %+v, want refused and narrowed", v)
+	}
+}
+
 func TestALivenessFailureWithoutARestartIsNotARestart(t *testing.T) {
 	entity := "checkout-api"
 	running := containerObs(t, "OBS-0001", entity, gateway.ContainerStatus{Name: "app", State: "running", Ready: false})
@@ -117,6 +130,8 @@ func TestCrashloopLabelsAgreeWithTheVerdicts(t *testing.T) {
 		{"crash", investigation.ClaimApplicationCrash, []investigation.Observation{
 			containerObs(t, "OBS-0001", entity, exited(1, "Error", 5))}},
 		{"crash beside liveness", investigation.ClaimApplicationCrash, []investigation.Observation{
+			containerObs(t, "OBS-0001", entity, exited(1, "Error", 5)), eventObs(t, "OBS-0002", entity, probeEvent("Liveness"))}},
+		{"liveness beside a self-exit", investigation.ClaimLivenessProbeRestart, []investigation.Observation{
 			containerObs(t, "OBS-0001", entity, exited(1, "Error", 5)), eventObs(t, "OBS-0002", entity, probeEvent("Liveness"))}},
 	}
 	for _, c := range cases {

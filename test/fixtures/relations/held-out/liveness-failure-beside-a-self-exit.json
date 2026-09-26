@@ -1,0 +1,101 @@
+{
+  "schema_version": "probe/v1",
+  "id": "liveness-failure-beside-a-self-exit",
+  "split": "held-out",
+  "rationale": "The container last exited by itself with code 1 while its liveness probe was failing. Either could have ended it, so the probe failure does not show a kubelet restart.",
+  "entity": "search-api",
+  "hypothesis": {
+    "statement": "search-api is restarted by the kubelet because its liveness probe fails",
+    "fault_domain": "kubernetes",
+    "claim_kind": "liveness_probe_restart"
+  },
+  "evidence": [
+    {
+      "action": {
+        "kind": "kubernetes.containers",
+        "entity": "search-api",
+        "reason": "read the termination history"
+      },
+      "response": {
+        "schema_version": "probe/v1",
+        "kind": "kubernetes.containers",
+        "entity": "search-api",
+        "status": "ok",
+        "completeness": "complete",
+        "retrieved_at": "2026-09-18T12:31:07Z",
+        "query": {
+          "datasource": "kubernetes",
+          "query": "pods -n lab -l app=search-api"
+        },
+        "digest": "sha256:07987e3a3728996f7653015b3a31ebf66e79ec7cbc77b28380f14ac0ebf14d6f",
+        "payload": {
+          "namespace": "lab",
+          "pods": [
+            {
+              "name": "search-api-8b7c6d5f9-p4n2t",
+              "namespace": "lab",
+              "phase": "Running",
+              "node": "mini-vora",
+              "start_time": "2026-09-18T11:40:00Z",
+              "containers": [
+                {
+                  "name": "app",
+                  "ready": false,
+                  "restart_count": 5,
+                  "state": "waiting",
+                  "reason": "CrashLoopBackOff",
+                  "last_terminated_at": "2026-09-18T12:21:04Z",
+                  "last_terminated_reason": "Error",
+                  "last_exit_code": 1
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "action": {
+        "kind": "kubernetes.events",
+        "entity": "search-api",
+        "reason": "read the probe events",
+        "window": {
+          "start": "2026-09-18T12:00:00Z",
+          "end": "2026-09-18T12:30:00Z"
+        }
+      },
+      "response": {
+        "schema_version": "probe/v1",
+        "kind": "kubernetes.events",
+        "entity": "search-api",
+        "status": "ok",
+        "completeness": "complete",
+        "retrieved_at": "2026-09-18T12:31:08Z",
+        "query": {
+          "datasource": "kubernetes",
+          "query": "events -n lab -l app=search-api"
+        },
+        "digest": "sha256:ae6bff5762d28d0260ac027c2553e45f009367e4f0fb5ce27c37e886edc13f1c",
+        "payload": {
+          "namespace": "lab",
+          "events": [
+            {
+              "type": "Warning",
+              "reason": "Unhealthy",
+              "message": "Liveness probe failed: HTTP probe failed with statuscode: 500",
+              "involved_object": "search-api-8b7c6d5f9-p4n2t",
+              "count": 7,
+              "first_seen": "2026-09-18T12:03:00Z",
+              "last_seen": "2026-09-18T12:20:00Z"
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "target": "OBS-0002",
+  "expected": "insufficient_context",
+  "forbidden": [
+    "supports"
+  ]
+}

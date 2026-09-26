@@ -79,6 +79,24 @@ func Root() string {
 	return filepath.Join(filepath.Dir(file), "..", "test", "fixtures")
 }
 
+// IncidentClasses are the incident fixture sets under Root, one directory each.
+// A class ships only with its refusal cases, so every one is held to the same
+// integrity checks and the same answer keys.
+var IncidentClasses = []string{"oom", "crashloop"}
+
+// AllCases lists every incident fixture case across the classes, sorted.
+func AllCases(root string) ([]string, error) {
+	var out []string
+	for _, class := range IncidentClasses {
+		dirs, err := Cases(filepath.Join(root, class))
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", class, err)
+		}
+		out = append(out, dirs...)
+	}
+	return out, nil
+}
+
 // Cases lists the fixture case directories, sorted.
 func Cases(root string) ([]string, error) {
 	entries, err := os.ReadDir(root)
