@@ -93,15 +93,9 @@ func investigate(args []string) error {
 	if *configPath == "" {
 		return errors.New("investigate needs --config <file>")
 	}
-	raw, err := os.ReadFile(*configPath)
+	cfg, err := loadInvestigateConfig(*configPath)
 	if err != nil {
 		return err
-	}
-	var cfg investigateConfig
-	dec := json.NewDecoder(strings.NewReader(string(raw)))
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(&cfg); err != nil {
-		return fmt.Errorf("config %s: %w", *configPath, err)
 	}
 
 	client, err := vora.NewClient(vora.Config{
@@ -181,6 +175,22 @@ func investigate(args []string) error {
 		fmt.Printf("  leading:      %s (allowed: %t)\n", result.Report.Leading.Kind, result.Report.Leading.Allowed)
 	}
 	return err
+}
+
+// loadInvestigateConfig reads a lab config strictly: an unknown field is a
+// typo, and a typo in a credential path must not be silently ignored.
+func loadInvestigateConfig(path string) (investigateConfig, error) {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return investigateConfig{}, err
+	}
+	var cfg investigateConfig
+	dec := json.NewDecoder(strings.NewReader(string(raw)))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&cfg); err != nil {
+		return investigateConfig{}, fmt.Errorf("config %s: %w", path, err)
+	}
+	return cfg, nil
 }
 
 func (c investigateConfig) incidentValue() (investigation.Incident, error) {
