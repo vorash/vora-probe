@@ -99,7 +99,39 @@ type Facts struct {
 	Restarts   []RestartFact
 	Events     []EventFact
 	Rollouts   []RolloutFact
+	Logs       []LogFact
 	Gaps       []CoverageGap
+}
+
+// LogFact is one logs.query answer: the filter and when each match was seen.
+// A truncated answer never becomes a fact, because counts before and after a
+// change point cannot be read from part of the lines.
+type LogFact struct {
+	ObsID   string
+	Filter  string
+	Total   int
+	Matches []time.Time
+}
+
+// logsChangedAcross reports whether a filter's matches began, or grew by at
+// least ratio, after since. Lines that were already there before a change do
+// not explain it, just as a flat mechanism metric does not.
+func logsChangedAcross(matches []time.Time, since time.Time, ratio float64) (before, after int, changed bool) {
+	for _, at := range matches {
+		if at.After(since) {
+			after++
+		} else {
+			before++
+		}
+	}
+	switch {
+	case after == 0:
+		return before, after, false
+	case before == 0:
+		return before, after, true
+	default:
+		return before, after, float64(after) >= ratio*float64(before)
+	}
 }
 
 // BuildFacts converts normalized observations into Facts for one entity.
@@ -178,6 +210,17 @@ func BuildFacts(entity string, obs []Observation) Facts {
 					})
 				}
 			}
+		case gateway.ActionLogsQuery:
+			lines, err := gateway.Response{Status: gateway.StatusOK, Payload: o.Payload}.LogLines()
+			if err != nil {
+				f.Gaps = append(f.Gaps, CoverageGap{ObsID: o.ID, Action: o.Action, Completeness: Incomplete, Reason: err.Error()})
+				continue
+			}
+			fact := LogFact{ObsID: o.ID, Filter: lines.Filter, Total: lines.Total}
+			for _, l := range lines.Lines {
+				fact.Matches = append(fact.Matches, l.At.UTC())
+			}
+			f.Logs = append(f.Logs, fact)
 		case gateway.ActionKubernetesEvents:
 			events, err := gateway.Response{Status: gateway.StatusOK, Payload: o.Payload}.Events()
 			if err != nil {

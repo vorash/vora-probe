@@ -411,8 +411,26 @@ func (p ClaimPolicy) citesMechanism(cited []string, obs map[string]Observation, 
 			continue
 		}
 		switch o.Type {
-		case ObsLog, ObsTrace:
+		case ObsTrace:
 			return true
+		case ObsLog:
+			// A log explains a change only if its matches began, or grew,
+			// after it. Citing lines that were already there would launder
+			// proximity into causation, as a flat metric would.
+			if o.Completeness != Complete && o.Completeness != Redacted {
+				continue
+			}
+			lines, err := gateway.Response{Status: gateway.StatusOK, Payload: o.Payload}.LogLines()
+			if err != nil {
+				continue
+			}
+			var at []time.Time
+			for _, l := range lines.Lines {
+				at = append(at, l.At)
+			}
+			if _, _, changed := logsChangedAcross(at, since, p.ImpactRatio); changed {
+				return true
+			}
 		case ObsMetric:
 			if o.Action != gateway.ActionMetricsQuery || !gateway.MechanismMetric(metricOf(o)) {
 				continue

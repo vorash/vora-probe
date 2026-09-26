@@ -117,6 +117,9 @@ type Incident struct {
 	StartedAt     time.Time      `json:"started_at"`
 	Window        Window         `json:"window"`
 	Status        IncidentStatus `json:"status"`
+	// Severity is the alert's, when the incident came from one. It decides
+	// which actions an investigation is offered: logs only for serious ones.
+	Severity string `json:"severity,omitempty"`
 }
 
 func (i Incident) Validate() error {

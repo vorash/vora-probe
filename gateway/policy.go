@@ -1,6 +1,7 @@
 package gateway
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -33,11 +34,32 @@ func RedactText(s string) (string, bool) {
 	return out, out != s
 }
 
-// RedactRaw redacts a JSON payload. Replacements never introduce quotes, so the
-// result stays valid JSON.
+// secretKey matches the names of fields whose whole value is a secret.
+var secretKey = regexp.MustCompile(`(?i)^(password|passwd|token|api[_-]?key|apikey|secret|client[_-]?secret|access[_-]?key|kubeconfig|client-key-data|client-certificate-data)$`)
+
+// RedactRaw redacts a JSON payload. It works on the decoded structure, so a
+// secret at the end of a string value, as in a log line ending "password=x",
+// is redacted without breaking the JSON around it. Redacting the raw text
+// would eat the closing quote, and the whole payload would be lost. A payload
+// that is not JSON falls back to text redaction, and is dropped if that cannot
+// keep it valid.
 func RedactRaw(raw json.RawMessage) (json.RawMessage, bool) {
 	if len(raw) == 0 {
 		return raw, false
+	}
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.UseNumber()
+	var v any
+	if err := dec.Decode(&v); err == nil && !dec.More() {
+		redacted, changed := redactValue(v, "")
+		if !changed {
+			return raw, false
+		}
+		out, err := json.Marshal(redacted)
+		if err != nil {
+			return nil, true
+		}
+		return out, true
 	}
 	text, changed := RedactText(string(raw))
 	if !changed {
@@ -49,6 +71,36 @@ func RedactRaw(raw json.RawMessage) (json.RawMessage, bool) {
 		return nil, true
 	}
 	return json.RawMessage(text), true
+}
+
+// redactValue redacts every string in a decoded JSON value. A value under a
+// secret-bearing key is replaced whole, whatever it looks like.
+func redactValue(v any, key string) (any, bool) {
+	switch t := v.(type) {
+	case string:
+		if key != "" && secretKey.MatchString(key) {
+			return "[REDACTED]", t != "[REDACTED]"
+		}
+		return RedactText(t)
+	case map[string]any:
+		changed := false
+		for k, child := range t {
+			if r, did := redactValue(child, k); did {
+				t[k], changed = r, true
+			}
+		}
+		return t, changed
+	case []any:
+		changed := false
+		for i, child := range t {
+			if r, did := redactValue(child, key); did {
+				t[i], changed = r, true
+			}
+		}
+		return t, changed
+	default:
+		return v, false
+	}
 }
 
 // RedactResponse redacts the parts of an answer that reach storage and models.

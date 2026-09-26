@@ -58,7 +58,7 @@ func (p LivePlanner) Plan(ctx context.Context, request investigation.ModelReques
 		// that left out an action's entity or window; a strict schema makes
 		// such a reply impossible to produce rather than a retry to spend.
 		ResponseFormat: &chatResponseFormat{Type: "json_schema", JSONSchema: &chatJSONSchema{
-			Name: "planner_reply", Strict: true, Schema: PlannerResponseSchema(),
+			Name: "planner_reply", Strict: true, Schema: PlannerResponseSchema(request.AllowedActions),
 		}},
 	}
 	if requiresParameterPinning(p.Endpoint.BaseURL) {
@@ -187,6 +187,7 @@ Allowed fault domains: %s
 Allowed claim kinds: %s
 Allowed action kinds: %s
 Allowed metrics: %s
+Log filters (logs.query only): %s
 
 Rules:
 - While the cause is unestablished, propose at least two genuinely competing
@@ -204,15 +205,22 @@ Rules:
   {"kind":"metrics.query","entity":"<service>","reason":"<why>",
    "metric":"container_memory_working_set_bytes",
    "window":{"start":"<RFC3339 UTC>","end":"<RFC3339 UTC>"},"resolution":"30s"}
-  The window may span at most one hour. Other action kinds set "metric",
-  "window" and "resolution" to null.
+  The window may span at most one hour. A "logs.query" action, when it is
+  offered, names one filter and a window, and sets "metric" and "resolution"
+  to null:
+  {"kind":"logs.query","entity":"<service>","reason":"<why>","filter":"error",
+   "window":{"start":"<RFC3339 UTC>","end":"<RFC3339 UTC>"},"metric":null,"resolution":null}
+  Other action kinds set "metric", "window", "resolution" and "filter" to null,
+  except kubernetes.events, which takes a window.
 - A missing, empty or malformed required field is rejected, and the whole reply
   with it. Do not omit a field to save space: an action is all of its fields or
   it is nothing.
-- Ask only for the actions and metrics listed above. Anything else is rejected.
+- Ask only for the actions offered for this incident (listed with it) and the
+  metrics and log filters listed above. Anything else is rejected.
 - You are read-only. Never propose a restart, a change, a rollout or a
   remediation, and never assert a cause the evidence does not support.`,
-		joinDomains(), joinClaimKinds(), joinActionKinds(), strings.Join(gateway.AllowedMetrics, ", "))
+		joinDomains(), joinClaimKinds(), joinActionKinds(), strings.Join(gateway.AllowedMetrics, ", "),
+		strings.Join(gateway.LogFilterNames(), ", "))
 }
 
 func joinDomains() string {
@@ -258,6 +266,11 @@ func renderPlannerRequest(r investigation.ModelRequest) string {
 			"(" + string(investigation.ClaimDeploymentRegression) + "). Collect the memory series and the memory limit. " +
 			"Never describe the forecast as a failure that has happened.\n")
 	}
+	offered := make([]string, 0, len(r.AllowedActions))
+	for _, a := range r.AllowedActions {
+		offered = append(offered, string(a))
+	}
+	fmt.Fprintf(&b, "\nOFFERED ACTIONS FOR THIS INCIDENT\n%s\n", strings.Join(offered, ", "))
 	fmt.Fprintf(&b, "\nBUDGET\nmodel calls remaining %d, infrastructure calls remaining %d, seconds remaining %d\n",
 		r.Budget.ModelCallsRemaining, r.Budget.InfraCallsRemaining, r.Budget.SecondsRemaining)
 

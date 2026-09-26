@@ -346,6 +346,26 @@ still `ErrInterrupted`. Only a controller that dies outright leaves no report
 for that attempt: its journal still shows the unanswered request, and in server
 mode the incident runs again as its next attempt when the server restarts.
 
+## Logs
+
+`logs.query` is a closed action. The model names one filter from
+`gateway.LogFilters` (`error`, `out_of_memory`, `panic`, `timeout`) and a window
+of at most an hour. It never writes a query: the adapter builds it from a fixed
+stream selector for the entity plus that filter's fixed line matcher.
+
+Logs carry the most secrets, so they are offered only to incidents of severity
+`critical`, `high` or `warning`. An incident of low or unknown severity (a
+forecast, a manual run without one) is not offered them. The engine refuses a
+planner reply that asks anyway, and the planner's schema for such an incident
+cannot even express the action.
+
+A log observation's statement counts lines and gives times. It never quotes
+a line, because a log line is exactly where text written to steer a model
+lives. The lines stay in the payload, redacted, as evidence. Redaction works on
+the decoded payload, so a secret at the end of a line (`password=x"`) is removed
+without breaking the JSON around it. A lab without a log source answers
+`unavailable`, which becomes a coverage gap rather than a refusal.
+
 ## Policy layers
 
 Three independent checks, so withdrawing a permission never requires trusting a

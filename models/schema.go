@@ -17,7 +17,7 @@ import (
 // an action kind does not use is present as null rather than omitted. The
 // engine's own validation still runs on every reply: the schema narrows what
 // can arrive, it does not replace the contract.
-func PlannerResponseSchema() map[string]any {
+func PlannerResponseSchema(offered []gateway.ActionKind) map[string]any {
 	str := map[string]any{"type": "string"}
 	nullable := func(s map[string]any) map[string]any {
 		return map[string]any{"anyOf": []any{s, map[string]any{"type": "null"}}}
@@ -38,7 +38,9 @@ func PlannerResponseSchema() map[string]any {
 	for _, k := range investigation.AllClaimKinds {
 		kinds = append(kinds, string(k))
 	}
-	for _, a := range gateway.AllowedActions {
+	// Only the actions this incident is offered: a low-severity incident's
+	// planner cannot even produce a logs.query.
+	for _, a := range offered {
 		actions = append(actions, string(a))
 	}
 	hypothesis := object(map[string]any{
@@ -54,6 +56,7 @@ func PlannerResponseSchema() map[string]any {
 		"metric":     nullable(enum(gateway.AllowedMetrics)),
 		"window":     nullable(object(map[string]any{"start": str, "end": str})),
 		"resolution": nullable(str),
+		"filter":     nullable(enum(gateway.LogFilterNames())),
 	})
 	return object(map[string]any{
 		"hypotheses":  map[string]any{"type": "array", "items": hypothesis},
