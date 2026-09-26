@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/vorash/vora-probe/gateway"
+	"github.com/vorash/vora-probe/investigation"
 )
 
 var evalWindow = func() *gateway.Window {
@@ -336,5 +337,29 @@ func TestUnavailableWhenNoPodsMatch(t *testing.T) {
 	}
 	if resp.Status != gateway.StatusUnavailable {
 		t.Fatalf("status = %s, want unavailable", resp.Status)
+	}
+}
+
+// A lab without a log source answers a logs request as unavailable, which
+// becomes a visible coverage gap. Refusing it instead would end a run over
+// evidence that is simply not collected here.
+func TestNoLogSourceIsACoverageGapNotARefusal(t *testing.T) {
+	gw := newGateway(t, http.NotFoundHandler())
+	now := time.Now().UTC()
+	a := gateway.Action{Kind: gateway.ActionLogsQuery, Entity: "memory-test", Reason: "read errors", Filter: "error",
+		Window: &gateway.Window{Start: now.Add(-30 * time.Minute), End: now}}
+	resp, err := gw.Execute(a)
+	if err != nil {
+		t.Fatalf("a logs request with no log source must be answered, not refused: %v", err)
+	}
+	if resp.Status != gateway.StatusUnavailable || resp.Completeness != gateway.Unavailable {
+		t.Fatalf("status %q / %q, want unavailable", resp.Status, resp.Completeness)
+	}
+	o, err := investigation.ObservationFromResponse("OBS-0001", a, resp, now)
+	if err != nil {
+		t.Fatalf("normalize: %v", err)
+	}
+	if facts := investigation.BuildFacts("memory-test", []investigation.Observation{o}); len(facts.Gaps) != 1 {
+		t.Fatalf("gaps = %v, want the missing logs as one coverage gap", facts.Gaps)
 	}
 }

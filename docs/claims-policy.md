@@ -38,7 +38,10 @@ impact onset is measured against the pre-rollout baseline rather than taken as
 the first sample of the window, and the claim must cite a mechanism that
 actually changed across the rollout. Citing a mechanism-shaped metric that stayed
 flat is not enough — `TestDeploymentRegressionRefusedWhenMechanismIsFlat` pins
-that.
+that. The same holds for logs: a log observation is mechanism evidence only
+when its matches began after the rollout, or grew by the impact ratio. Error
+lines that were already there before it explain nothing
+(`TestALogIsAMechanismOnlyIfItChangedAcrossTheRollout`).
 
 **Missing evidence is reported, not filled in.** A request that returns
 `unavailable` or `truncated` becomes a coverage gap on the facts for that

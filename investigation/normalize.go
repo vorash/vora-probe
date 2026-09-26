@@ -63,6 +63,8 @@ func observationType(k gateway.ActionKind) ObservationType {
 		return ObsK8sEvent
 	case gateway.ActionKubernetesDeployments:
 		return ObsK8sDeployment
+	case gateway.ActionLogsQuery:
+		return ObsLog
 	default:
 		return ObsK8sEvent
 	}
@@ -91,6 +93,9 @@ func withMetric(a gateway.Action, q gateway.QueryMeta) gateway.QueryMeta {
 func target(a gateway.Action) string {
 	if a.Metric != "" {
 		return a.Metric + " for " + a.Entity
+	}
+	if a.Filter != "" {
+		return "logs matching " + a.Filter + " for " + a.Entity
 	}
 	return string(a.Kind) + " for " + a.Entity
 }
@@ -128,6 +133,12 @@ func renderStatement(a gateway.Action, r gateway.Response) (string, error) {
 			return "", err
 		}
 		return renderDeployments(a, deployments), nil
+	case gateway.ActionLogsQuery:
+		lines, err := r.LogLines()
+		if err != nil {
+			return "", err
+		}
+		return renderLogs(a, lines), nil
 	default:
 		return string(a.Kind) + " for " + a.Entity + " returned a result", nil
 	}
@@ -172,6 +183,21 @@ func renderContainers(a gateway.Action, pods gateway.PodList) string {
 		return fmt.Sprintf("no containers matching %s were returned", a.Entity)
 	}
 	return joinBounded(parts, "; ")
+}
+
+// renderLogs states counts and times only, never a line. The statement is what
+// the planner sees, and a log line is exactly where text written to look like
+// an instruction lives; the lines stay in the payload, redacted, as evidence.
+func renderLogs(a gateway.Action, lines gateway.LogLines) string {
+	span := FormatDuration(a.Window.End.Sub(a.Window.Start))
+	if lines.Total == 0 {
+		return fmt.Sprintf("no log lines matching %q for %s over %s", a.Filter, a.Entity, span)
+	}
+	s := fmt.Sprintf("%d log lines matching %q for %s over %s", lines.Total, a.Filter, a.Entity, span)
+	if n := len(lines.Lines); n > 0 {
+		s += fmt.Sprintf(" (first at %s, last at %s)", FormatTime(&lines.Lines[0].At), FormatTime(&lines.Lines[n-1].At))
+	}
+	return s
 }
 
 func renderEvents(a gateway.Action, events gateway.EventList) string {

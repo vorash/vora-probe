@@ -291,7 +291,14 @@ func (e *Engine) consumeModel(s *state, pending *Pending) (bool, *gateway.Action
 		s.env.Run.Used.ModelCalls += response.Attempts - 1
 	}
 
-	if err := response.Validate(s.env.Phase); err != nil {
+	err := response.Validate(s.env.Phase)
+	if err == nil && response.NextAction != nil && !offered(s.env.Incident, response.NextAction.Kind) {
+		// Offering is the contract, not a hint: an action this incident was
+		// not offered (logs, for a low-severity one) is refused like any
+		// other invalid reply, whatever the model chose.
+		err = fmt.Errorf("action %q is not offered for this incident (severity %q)", response.NextAction.Kind, s.env.Incident.Severity)
+	}
+	if err != nil {
 		if s.env.ModelAttempts < 2 {
 			s.env.Note = "previous planner response was rejected: " + err.Error()
 			e.decide(s, OutcomeContinue, "planner response rejected, retrying once: "+err.Error(), "")
@@ -329,6 +336,16 @@ func (e *Engine) consumeModel(s *state, pending *Pending) (bool, *gateway.Action
 	}
 	e.decide(s, OutcomeContinue, response.Reason, "")
 	return false, response.NextAction, nil
+}
+
+// offered reports whether an incident is offered an action kind.
+func offered(i Incident, k gateway.ActionKind) bool {
+	for _, a := range gateway.ActionsFor(i.Severity) {
+		if a == k {
+			return true
+		}
+	}
+	return false
 }
 
 func (e *Engine) exhausted(env *StepEnvelope, now time.Time) string {
@@ -402,7 +419,7 @@ func (e *Engine) modelRequest(env *StepEnvelope, phase, retryNote string) *Model
 		Hypotheses:     env.Hypotheses,
 		Observations:   summaries,
 		Relations:      env.Relations,
-		AllowedActions: gateway.AllowedActions,
+		AllowedActions: gateway.ActionsFor(env.Incident.Severity),
 		AllowedMetrics: gateway.AllowedMetrics,
 		Budget: BudgetsLeft{
 			ModelCallsRemaining: env.Run.Budgets.MaxModelCalls - env.Run.Used.ModelCalls,

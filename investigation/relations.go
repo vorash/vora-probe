@@ -210,6 +210,14 @@ func (b *relationBuilder) deploymentRegression(f Facts) {
 			b.addAll(obsIDsOfSamples(f.QueryCount), Contradicts, fmt.Sprintf("query volume stayed within %s%% of its pre-rollout mean, so the rollout did not change database work",
 				FormatFloat(st.Max/st.Mean*100, 0)))
 		}
+		for _, l := range f.Logs {
+			before, after, _ := logsChangedAcross(l.Matches, rollout.CompletedAt, b.policy.ImpactRatio)
+			if before+after == 0 {
+				b.add(l.ObsID, Neutral, fmt.Sprintf("no log lines matched %q", l.Filter))
+				continue
+			}
+			b.add(l.ObsID, Contradicts, fmt.Sprintf("log lines matching %q were already there before the rollout (%d before, %d after), so they do not explain it", l.Filter, before, after))
+		}
 	}
 	if len(f.Latency) == 0 {
 		b.add(rollout.ObsID, InsufficientContext, "no impact measurement was collected to correlate the rollout with")
@@ -263,7 +271,28 @@ func (b *relationBuilder) addAll(ids []string, rel Relationship, reason string) 
 
 // mechanism returns the observation that explains how the rollout produced the
 // impact, or nil. It is the difference between a correlation and a finding.
+// logMechanism is a filter whose matches began, or grew, after since.
+func (b *relationBuilder) logMechanism(f Facts, since time.Time) *mechanismFact {
+	for _, l := range f.Logs {
+		before, after, changed := logsChangedAcross(l.Matches, since, b.policy.ImpactRatio)
+		if !changed {
+			continue
+		}
+		reason := fmt.Sprintf("%d log lines matching %q appeared after the rollout, with none before it", after, l.Filter)
+		if before > 0 {
+			reason = fmt.Sprintf("log lines matching %q rose from %d before the rollout to %d after it", l.Filter, before, after)
+		}
+		return &mechanismFact{ObsID: l.ObsID, Reason: reason}
+	}
+	return nil
+}
+
 func (b *relationBuilder) mechanism(f Facts, since time.Time) *mechanismFact {
+	if m := b.logMechanism(f, since); m != nil {
+		if _, asked := b.obs[m.ObsID]; asked {
+			return m
+		}
+	}
 	for _, s := range f.QueryCount {
 		o, ok := b.obs[s.ObsID]
 		if !ok {

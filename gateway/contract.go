@@ -60,6 +60,7 @@ var AllowedActions = []ActionKind{
 	ActionKubernetesContainers,
 	ActionKubernetesEvents,
 	ActionKubernetesDeployments,
+	ActionLogsQuery,
 }
 
 // AllowedMetrics bounds metrics.query. A free-form metric name would turn the
@@ -115,6 +116,8 @@ type Action struct {
 	Metric     string     `json:"metric,omitempty"`
 	Window     *Window    `json:"window,omitempty"`
 	Resolution string     `json:"resolution,omitempty"`
+	// Filter names one of LogFilters, for logs.query only.
+	Filter string `json:"filter,omitempty"`
 }
 
 // MaxWindow bounds a single evidence request. Wider windows are the controller's
@@ -155,10 +158,23 @@ func (a Action) Validate() error {
 		if a.Window == nil {
 			return fmt.Errorf("kubernetes.events requires a window")
 		}
+	case ActionLogsQuery:
+		if !LogFilterAllowed(a.Filter) {
+			return fmt.Errorf("log filter %q is not allowed (one of %v)", a.Filter, LogFilterNames())
+		}
+		if a.Window == nil {
+			return fmt.Errorf("logs.query requires a window")
+		}
+		if a.Metric != "" || a.Resolution != "" {
+			return fmt.Errorf("logs.query takes no metric or resolution")
+		}
 	default:
 		if a.Metric != "" || a.Window != nil || a.Resolution != "" {
 			return fmt.Errorf("action %q takes no metric, window or resolution", a.Kind)
 		}
+	}
+	if a.Filter != "" && a.Kind != ActionLogsQuery {
+		return fmt.Errorf("action %q takes no filter", a.Kind)
 	}
 	if a.Window != nil {
 		return a.Window.Validate(MaxWindow)
@@ -174,7 +190,11 @@ func (a Action) Key() string {
 		start = a.Window.Start.UTC().Format(time.RFC3339)
 		end = a.Window.End.UTC().Format(time.RFC3339)
 	}
-	return fmt.Sprintf("%s|%s|%s|%s|%s|%s", a.Kind, a.Entity, a.Metric, start, end, a.Resolution)
+	key := fmt.Sprintf("%s|%s|%s|%s|%s|%s", a.Kind, a.Entity, a.Metric, start, end, a.Resolution)
+	if a.Filter != "" {
+		key += "|" + a.Filter
+	}
+	return key
 }
 
 func (a Action) String() string {

@@ -216,6 +216,10 @@ func TestTheIncidentIsNormalizedFromTheEarliestAlert(t *testing.T) {
 		t.Errorf("namespace/entity = %q/%q, want the earliest alert's", r.Namespace, r.Entity)
 	case r.Severity != "warning" || r.Alertname != "ContainerOOMKilled":
 		t.Errorf("severity/alertname = %q/%q", r.Severity, r.Alertname)
+	case inc.Severity != "warning":
+		// The incident carries the severity, because it decides which
+		// actions the investigation is offered.
+		t.Errorf("incident severity = %q, want the alert's", inc.Severity)
 	}
 	if !(inc.Window.Start.Before(inc.StartedAt) && inc.Window.End.After(inc.StartedAt)) {
 		t.Errorf("window %s–%s must contain the alert's start %s", inc.Window.Start, inc.Window.End, inc.StartedAt)
