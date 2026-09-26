@@ -37,6 +37,66 @@ data:
       - job_name: memory-test
         static_configs:
           - targets: ["memory-test.probe-lab.svc:8080"]
+    # Alertmanager lives in 40-alerting.yaml.
+    alerting:
+      alertmanagers:
+        - static_configs:
+            - targets: ["alertmanager.probe-lab.svc:9093"]
+    rule_files:
+      - /etc/prometheus/rules.yml
+  # Every alert except Watchdog carries `service` (the container name) so the
+  # intake can name the service, and is scoped to probe-lab like the reads.
+  rules.yml: |
+    groups:
+      - name: probe-lab
+        rules:
+          # Always firing: a heartbeat that stops arriving means alerting is down.
+          - alert: Watchdog
+            expr: vector(1)
+            labels:
+              severity: none
+            annotations:
+              summary: An alert that should always be firing to certify that Alertmanager is working properly.
+          # A restart whose last termination was an OOM kill. The restart
+          # window bounds it: last_terminated_reason alone stays 1 forever.
+          - alert: ContainerOOMKilled
+            expr: |
+              label_replace(
+                (increase(kube_pod_container_status_restarts_total{namespace="probe-lab"}[10m]) > 0)
+                and on (namespace, pod, container)
+                (kube_pod_container_status_last_terminated_reason{namespace="probe-lab", reason="OOMKilled"} == 1),
+                "service", "$1", "container", "(.+)")
+            labels:
+              severity: warning
+            annotations:
+              summary: "{{ $labels.container }} was OOMKilled"
+          # Repeated restarts that were not OOM kills, e.g. a failing liveness probe.
+          - alert: ContainerRestartLoop
+            expr: |
+              label_replace(
+                (increase(kube_pod_container_status_restarts_total{namespace="probe-lab"}[15m]) > 2)
+                unless on (namespace, pod, container)
+                (kube_pod_container_status_last_terminated_reason{namespace="probe-lab", reason="OOMKilled"} == 1),
+                "service", "$1", "container", "(.+)")
+            labels:
+              severity: warning
+            annotations:
+              summary: "{{ $labels.container }} restarted {{ $value | printf \"%.0f\" }} times in 15m"
+          # No `for`: `inject.sh ramp` holds near the limit for only 30s.
+          - alert: ContainerMemoryNearLimit
+            expr: |
+              label_replace(
+                max by (namespace, pod, container) (
+                  container_memory_working_set_bytes{namespace="probe-lab", container!~"|POD"})
+                / on (namespace, pod, container)
+                max by (namespace, pod, container) (
+                  container_spec_memory_limit_bytes{namespace="probe-lab", container!~"|POD"} > 0)
+                > 0.9,
+                "service", "$1", "container", "(.+)")
+            labels:
+              severity: warning
+            annotations:
+              summary: "{{ $labels.container }} working set is above 90% of its memory limit"
 ---
 apiVersion: apps/v1
 kind: Deployment
