@@ -53,7 +53,7 @@ func TestAnExhaustionForecastIsAdmittedOnlyInItsConditionalForm(t *testing.T) {
 	if strings.Contains(v.Claim.Statement, "crash") {
 		t.Fatalf("the planner's unconditional statement survived: %q", v.Claim.Statement)
 	}
-	if v.PolicyVersion != "claims/v2" {
+	if v.PolicyVersion != investigation.ClaimPolicyVersion {
 		t.Fatalf("policy version %q", v.PolicyVersion)
 	}
 }

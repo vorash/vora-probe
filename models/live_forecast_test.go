@@ -26,3 +26,19 @@ func TestAForecastIncidentIsPresentedAsAForecast(t *testing.T) {
 		t.Fatal("the closed set of claim kinds must include the forecast")
 	}
 }
+
+// A classed incident reaches the planner with its class's competing hypotheses
+// and first evidence, as guidance; an unclassed one carries none.
+func TestAClassedIncidentCarriesItsGuidance(t *testing.T) {
+	req := investigation.ModelRequest{Incident: investigation.Incident{ID: "INC-c", Service: "checkout-api", Class: "crashloop"}}
+	prompt := renderPlannerRequest(req)
+	for _, want := range []string{"INCIDENT CLASS crashloop", "liveness_probe_restart", "application_crash", "kubernetes.events"} {
+		if !strings.Contains(prompt, want) {
+			t.Fatalf("the prompt is missing %q:\n%s", want, prompt)
+		}
+	}
+	req.Incident.Class = ""
+	if strings.Contains(renderPlannerRequest(req), "INCIDENT CLASS") {
+		t.Fatal("an unclassed incident must carry no class guidance")
+	}
+}

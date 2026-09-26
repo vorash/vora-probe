@@ -27,6 +27,12 @@ const (
 	// reaches its limit within the horizon if the current growth persists. It
 	// is only ever stated conditionally, in words code renders.
 	ClaimExhaustionForecast ClaimKind = "exhaustion_forecast"
+	// ClaimLivenessProbeRestart: the kubelet restarts the container because
+	// its liveness probe fails.
+	ClaimLivenessProbeRestart ClaimKind = "liveness_probe_restart"
+	// ClaimApplicationCrash: the container exits by itself with an
+	// application error.
+	ClaimApplicationCrash ClaimKind = "application_crash"
 )
 
 // AllClaimKinds is the closed set of assertions Probe understands. Model output
@@ -40,6 +46,8 @@ var AllClaimKinds = []ClaimKind{
 	ClaimNonMemoryRestart,
 	ClaimUnknownCause,
 	ClaimExhaustionForecast,
+	ClaimLivenessProbeRestart,
+	ClaimApplicationCrash,
 }
 
 // overclaimKinds assert more than this slice collects evidence for. They may be
@@ -141,6 +149,10 @@ func (p ClaimPolicy) Evaluate(c Claim, f Facts, obs map[string]Observation) Clai
 		// "Inconclusive" is always an admissible result.
 	case ClaimExhaustionForecast:
 		p.evalExhaustionForecast(&v, c, f)
+	case ClaimLivenessProbeRestart:
+		p.evalLivenessRestart(&v, c, f)
+	case ClaimApplicationCrash:
+		p.evalApplicationCrash(&v, c, f)
 	}
 	v.Allowed = len(v.Reasons) == 0
 	v.Overclaim = IsOverclaimKind(c.Kind) && !v.Allowed
@@ -378,6 +390,68 @@ func (p ClaimPolicy) evalNonMemoryRestart(v *ClaimVerdict, c Claim, f Facts) {
 	establishing := append(obsIDsOfTerms(terms), obsIDsOfEvents(probes)...)
 	if !citesAny(c.Evidence, establishing) {
 		v.Reasons = append(v.Reasons, "claim does not cite the termination reason or probe failure it rests on")
+	}
+}
+
+// memoryKillEvidenced refuses a restart claim that a memory-limit kill
+// contradicts. It reports whether it refused.
+func memoryKillEvidenced(v *ClaimVerdict, f Facts) bool {
+	if len(f.OOMTerminations()) > 0 || len(f.OOMEvents()) > 0 {
+		v.Reasons = append(v.Reasons, "a memory-limit kill is evidenced, which explains the restart")
+		v.Narrowed = "the container was killed for exceeding its memory limit"
+		return true
+	}
+	return false
+}
+
+// evalLivenessRestart admits "the liveness probe restarts it" only when a
+// liveness failure and a restart are both evidenced. A readiness failure is
+// not enough: it takes the pod out of service and never restarts it.
+func (p ClaimPolicy) evalLivenessRestart(v *ClaimVerdict, c Claim, f Facts) {
+	if memoryKillEvidenced(v, f) {
+		return
+	}
+	liveness := f.LivenessFailures()
+	if len(liveness) == 0 {
+		v.Reasons = append(v.Reasons, "no liveness probe failure is evidenced")
+		if len(f.ReadinessFailures()) > 0 {
+			v.Narrowed = "readiness probe failures take the pod out of service; they do not restart it"
+		} else {
+			v.Narrowed = "the container restarted; a failing liveness probe is not evidenced as the reason"
+		}
+		return
+	}
+	if !f.Restarted() {
+		v.Reasons = append(v.Reasons, "the liveness probe fails, but no restart is evidenced")
+		v.Narrowed = "the liveness probe is failing; a restart caused by it is not evidenced"
+		return
+	}
+	if !citesAny(c.Evidence, obsIDsOfEvents(liveness)) {
+		v.Reasons = append(v.Reasons, "claim does not cite the liveness probe failure it rests on")
+	}
+}
+
+// evalApplicationCrash admits "it exits by itself with an error" only for an
+// application exit code, and only when no liveness failure could mean the
+// kubelet ended it instead.
+func (p ClaimPolicy) evalApplicationCrash(v *ClaimVerdict, c Claim, f Facts) {
+	if memoryKillEvidenced(v, f) {
+		return
+	}
+	exits := f.SelfExits()
+	if len(exits) == 0 {
+		v.Reasons = append(v.Reasons, "no termination with an application exit code is evidenced (137 and 143 are signals, not exits)")
+		v.Narrowed = "the container restarted; that it exited by itself with an error is not evidenced"
+		return
+	}
+	if len(f.LivenessFailures()) > 0 {
+		v.Reasons = append(v.Reasons, "the liveness probe also fails, so whether the container crashed or was restarted by the kubelet is not established")
+		v.Narrowed = fmt.Sprintf("the container last exited with code %s while its liveness probe was failing; which came first is not established",
+			exitCode(exits[0].LastExitCode))
+		return
+	}
+	if !citesAny(c.Evidence, obsIDsOfTerms(exits)) {
+		v.Reasons = append(v.Reasons, "claim does not cite the termination it rests on")
 	}
 }
 

@@ -362,6 +362,7 @@ func (in *Intake) normalize(n Notification, fp string, now time.Time) (*Record, 
 		Window:        window,
 		Status:        investigation.IncidentOpen,
 		Severity:      n.label(first, "severity"),
+		Class:         investigation.ClassForAlert(alertname),
 	}
 	if err := incident.Validate(); err != nil {
 		return nil, fmt.Errorf("alert does not make a valid incident: %w", err)

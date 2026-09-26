@@ -28,11 +28,27 @@ type RestartFact struct {
 	LastExitCode         *int
 }
 
+// OOMKilled is a memory-limit kill as Kubernetes records it. Exit code 137
+// alone is not one: it only means the process was sent SIGKILL, which is also
+// how the kubelet ends a container whose liveness probe fails.
 func (r RestartFact) OOMKilled() bool {
-	if strings.EqualFold(r.LastTerminatedReason, "OOMKilled") {
-		return true
+	return strings.EqualFold(r.LastTerminatedReason, "OOMKilled")
+}
+
+// ambiguousKill is a SIGKILL with no recorded reason: it may be a memory kill
+// or a kubelet kill, and the evidence does not say which.
+func (r RestartFact) ambiguousKill() bool {
+	return r.LastTerminatedReason == "" && r.LastExitCode != nil && *r.LastExitCode == 137
+}
+
+// SelfExit is a container that ended by itself with an application error: a
+// non-zero exit code that is not a signal (137 is SIGKILL, 143 SIGTERM).
+func (r RestartFact) SelfExit() bool {
+	if r.OOMKilled() || r.LastExitCode == nil {
+		return false
 	}
-	return r.LastExitCode != nil && *r.LastExitCode == 137
+	code := *r.LastExitCode
+	return code != 0 && code != 137 && code != 143
 }
 
 type EventFact struct {
@@ -368,12 +384,56 @@ func (f Facts) ProbeFailures() []EventFact {
 	return out
 }
 
+// LivenessFailures are liveness probe failures, the ones that restart a
+// container.
+func (f Facts) LivenessFailures() []EventFact {
+	var out []EventFact
+	for _, e := range f.Events {
+		if e.Mentions("Liveness probe failed", "failed liveness probe") {
+			out = append(out, e)
+		}
+	}
+	return out
+}
+
+// ReadinessFailures take a pod out of service; they never restart it.
+func (f Facts) ReadinessFailures() []EventFact {
+	var out []EventFact
+	for _, e := range f.Events {
+		if e.Mentions("Readiness probe failed") {
+			out = append(out, e)
+		}
+	}
+	return out
+}
+
+// Restarted reports whether any container of the entity restarted.
+func (f Facts) Restarted() bool {
+	for _, r := range f.Restarts {
+		if r.Count > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+// SelfExits are containers that ended by themselves with an application error.
+func (f Facts) SelfExits() []RestartFact {
+	var out []RestartFact
+	for _, r := range f.Restarts {
+		if r.SelfExit() {
+			out = append(out, r)
+		}
+	}
+	return out
+}
+
 // NonOOMTerminations are containers that terminated for a stated reason other
-// than a memory-limit kill.
+// than a memory-limit kill. A reasonless SIGKILL is left out: it may be either.
 func (f Facts) NonOOMTerminations() []RestartFact {
 	var out []RestartFact
 	for _, r := range f.Restarts {
-		if r.OOMKilled() {
+		if r.OOMKilled() || r.ambiguousKill() {
 			continue
 		}
 		if r.LastTerminatedReason != "" || r.LastExitCode != nil {

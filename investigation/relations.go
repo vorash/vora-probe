@@ -134,6 +134,48 @@ func refusedFor(fc Forecast, any ...ForecastRefusal) bool {
 	return false
 }
 
+// oomContradicts labels memory-kill evidence against a restart hypothesis that
+// is not about memory.
+func (b *relationBuilder) oomContradicts(f Facts) {
+	for _, t := range f.OOMTerminations() {
+		b.add(t.ObsID, Contradicts, fmt.Sprintf("%s/%s was terminated for exceeding its memory limit", t.Pod, t.Container))
+	}
+	for _, e := range f.OOMEvents() {
+		b.add(e.ObsID, Contradicts, "an out-of-memory event explains the restart: "+e.Message)
+	}
+}
+
+func (b *relationBuilder) livenessRestart(f Facts) {
+	b.oomContradicts(f)
+	for _, e := range f.LivenessFailures() {
+		b.add(e.ObsID, Supports, fmt.Sprintf("liveness probe failures recorded (x%d): %s", e.Count, e.Message))
+	}
+	for _, e := range f.ReadinessFailures() {
+		b.add(e.ObsID, InsufficientContext, "a readiness probe failure takes the pod out of service; it does not restart it")
+	}
+	for _, t := range f.SelfExits() {
+		b.add(t.ObsID, InsufficientContext, fmt.Sprintf("%s/%s last exited with code %s by itself, which does not show a probe restart",
+			t.Pod, t.Container, exitCode(t.LastExitCode)))
+	}
+}
+
+func (b *relationBuilder) applicationCrash(f Facts) {
+	b.oomContradicts(f)
+	liveness := f.LivenessFailures()
+	for _, t := range f.SelfExits() {
+		rel := Supports
+		reason := fmt.Sprintf("%s/%s exited by itself with code %s at %s", t.Pod, t.Container, exitCode(t.LastExitCode), FormatTime(t.LastTerminatedAt))
+		if len(liveness) > 0 {
+			rel = InsufficientContext
+			reason += ", while its liveness probe was also failing"
+		}
+		b.add(t.ObsID, rel, reason)
+	}
+	for _, e := range liveness {
+		b.add(e.ObsID, InsufficientContext, "a failing liveness probe means the kubelet may have ended the container, not the application")
+	}
+}
+
 func (b *relationBuilder) nonMemoryRestart(f Facts) {
 	for _, t := range f.OOMTerminations() {
 		b.add(t.ObsID, Contradicts, fmt.Sprintf("%s/%s was terminated for exceeding its memory limit", t.Pod, t.Container))

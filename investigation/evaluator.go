@@ -97,6 +97,10 @@ func (d DeterministicEvaluator) Label(h Hypothesis, f Facts, obs map[string]Obse
 		b.saturation(f)
 	case ClaimExhaustionForecast:
 		b.exhaustionForecast(f)
+	case ClaimLivenessProbeRestart:
+		b.livenessRestart(f)
+	case ClaimApplicationCrash:
+		b.applicationCrash(f)
 	default:
 		b.inconclusive(f)
 	}

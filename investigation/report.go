@@ -520,6 +520,18 @@ func recommend(env *StepEnvelope, leading ClaimVerdict) *Recommendation {
 			Rationale: "the container is evidenced as killed at its limit, which establishes the mechanism of the restart but not why the working set reached it; raising the limit without that would move the failure rather than remove it",
 			Status:    "not executed: this slice is read-only and requires human approval",
 		}
+	case ClaimLivenessProbeRestart:
+		return &Recommendation{
+			Action:    fmt.Sprintf("Compare the liveness probe of %s (endpoint, timeout, initial delay, threshold) with how long the service takes to answer", env.Incident.Service),
+			Rationale: "the kubelet is evidenced as restarting the container because the probe fails; whether the probe or the service is at fault is the next question, and restarting it again answers neither",
+			Status:    "not executed: this slice is read-only and requires human approval",
+		}
+	case ClaimApplicationCrash:
+		return &Recommendation{
+			Action:    fmt.Sprintf("Read why %s exits: its last logs before the termination and the meaning of its exit code", env.Incident.Service),
+			Rationale: "the container is evidenced as exiting by itself with an application error; the cause is in the application, and the restart only repeats it",
+			Status:    "not executed: this slice is read-only and requires human approval",
+		}
 	case ClaimNonMemoryRestart:
 		return &Recommendation{
 			Action:    fmt.Sprintf("Review the probe configuration and the health endpoint of %s", env.Incident.Service),
