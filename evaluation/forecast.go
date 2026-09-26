@@ -175,6 +175,9 @@ type ForecastRun struct {
 	Opened    int  `json:"opened"`
 	Withdrawn int  `json:"withdrawn"`
 	OpenAtEnd bool `json:"open_at_end"`
+	// Realized: an open forecast whose series reached the limit. That is the
+	// forecast coming true, not the trend stopping, so it is not a withdrawal.
+	Realized bool `json:"realized"`
 	// First is the first forecast raised, and WithdrawnAt when it was taken
 	// back, if it was.
 	First       *investigation.Forecast `json:"first,omitempty"`
@@ -201,6 +204,10 @@ func ReplayForecast(c ForecastCase, p WatchPolicy) ForecastRun {
 		}
 		run.Ticks++
 		f := investigation.ForecastExhaustion(window, c.LimitBytes, true, p.Forecast)
+		if open && reachedLimit(f) {
+			run.Realized = true
+			break
+		}
 		raised := f.Outcome == investigation.ForecastWithinHorizon
 		switch {
 		case raised && !open:
@@ -221,6 +228,17 @@ func ReplayForecast(c ForecastCase, p WatchPolicy) ForecastRun {
 	}
 	run.OpenAtEnd = open
 	return run
+}
+
+// reachedLimit is a refusal whose only reason is that the series is at its
+// limit: the forecast was right, and there is nothing left to forecast.
+func reachedLimit(f investigation.Forecast) bool {
+	for _, r := range f.Refusals {
+		if r == investigation.RefuseAtOrOverLimit {
+			return true
+		}
+	}
+	return false
 }
 
 // ForecastScore is the suite's result for a set of cases. Counts only.

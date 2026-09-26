@@ -93,6 +93,17 @@ func TestTheWatchReplayScoresTheAcceptanceShapes(t *testing.T) {
 	}
 }
 
+// A forecast whose series reaches the limit came true. Counting that as a
+// withdrawal would report a correct forecast as one the watch took back, which
+// the first recorded ramp did until this was fixed.
+func TestAForecastThatReachesTheLimitIsRealizedNotWithdrawn(t *testing.T) {
+	ramp := synthetic("ramp", 70*time.Minute, func(m float64) float64 { return 60*mib + 3*m*mib + wobble(m) })
+	run := ReplayForecast(ramp, DefaultWatchPolicy())
+	if run.Opened != 1 || run.Withdrawn != 0 || !run.Realized {
+		t.Fatalf("opened %d, withdrawn %d, realized %t: want one forecast, realized, never withdrawn", run.Opened, run.Withdrawn, run.Realized)
+	}
+}
+
 // A watch only knows what had been sampled by each tick. A replay that looked
 // ahead would report lead times no live watch could have had.
 func TestAReplayNeverLooksAhead(t *testing.T) {
