@@ -1,0 +1,24 @@
+{
+  "schema_version": "probe/v1",
+  "case": "application-crash",
+  "notes": "Exit code 1 with no probe failure: the application ends itself. A liveness restart is not evidenced and memory is far below the limit. Its only event is a back-off, which restates that restarts happen and bears on no hypothesis, so no event evidence is required.",
+  "expected": {
+    "fault_domain": "application",
+    "leading_claim": "application_crash",
+    "cause_asserted": true,
+    "allowed_claims": [
+      "application_crash"
+    ],
+    "forbidden_claims": [
+      "liveness_probe_restart",
+      "memory_limit_termination",
+      "memory_leak",
+      "deployment_regression"
+    ],
+    "required_observation_types": [
+      "k8s_container_state",
+      "metric"
+    ],
+    "recommendation_executed": false
+  }
+}

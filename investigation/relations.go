@@ -147,7 +147,12 @@ func (b *relationBuilder) oomContradicts(f Facts) {
 
 func (b *relationBuilder) livenessRestart(f Facts) {
 	b.oomContradicts(f)
+	selfExit := len(f.SelfExits()) > 0
 	for _, e := range f.LivenessFailures() {
+		if selfExit {
+			b.add(e.ObsID, InsufficientContext, "the liveness probe fails, but the container also exited by itself, so the kubelet is not shown to have restarted it")
+			continue
+		}
 		b.add(e.ObsID, Supports, fmt.Sprintf("liveness probe failures recorded (x%d): %s", e.Count, e.Message))
 	}
 	for _, e := range f.ReadinessFailures() {

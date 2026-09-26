@@ -1,0 +1,26 @@
+{
+  "schema_version": "probe/v1",
+  "case": "ambiguous-exit-and-probe",
+  "notes": "An exit code of 1 beside liveness failures is ambiguous both ways. Neither the probe restart nor the crash may be asserted over the other, so the case ends inconclusive, and memory stays refuted.",
+  "expected": {
+    "fault_domain": "unknown",
+    "leading_claim": "unknown_cause",
+    "cause_asserted": false,
+    "allowed_claims": [
+      "unknown_cause"
+    ],
+    "forbidden_claims": [
+      "liveness_probe_restart",
+      "application_crash",
+      "memory_limit_termination",
+      "memory_leak",
+      "deployment_regression"
+    ],
+    "required_observation_types": [
+      "k8s_container_state",
+      "k8s_event",
+      "metric"
+    ],
+    "recommendation_executed": false
+  }
+}

@@ -103,7 +103,8 @@ Once the Vora CLI grows plugin dispatch (vorash/vora#37), the same entry point i
 ## What it refuses
 
 Probe's most important behaviour is refusing what the evidence does not support.
-The four fixtures pin that, and each one fails a specific overclaim:
+The fixtures pin that, four per incident class, and each one fails a specific
+overclaim:
 
 | Case | What it pins down |
 | --- | --- |
@@ -111,6 +112,10 @@ The four fixtures pin that, and each one fails a specific overclaim:
 | `misleading-deployment-correlation` | A rollout inside the proximity bound with flat memory and unchanged query volume ends inconclusive. Proximity is not causation. |
 | `missing-telemetry` | Restarts are evidenced and the terminating cause is not; the report stays inconclusive and publishes its coverage gaps. |
 | `non-oom-restart` | A probe-driven restart with memory far below the limit is never reported as an out-of-memory incident. |
+| `crashloop/liveness-restart` | The kubelet kills the container over failing liveness probes (exit 137, reason `Error`); that is a probe restart, and a SIGKILL is not read as a memory kill. |
+| `crashloop/application-crash` | The container exits with code 1 by itself and no probe fails; the crash is established and a probe restart is refused. |
+| `crashloop/misleading-rollout` | A rollout lands two minutes before latency jumps, but the crashes began before it and query volume is flat: the crash is the finding, and the rollout is refused. |
+| `crashloop/ambiguous-exit-and-probe` | An application exit beside a failing liveness probe is ambiguous both ways, so the case ends inconclusive rather than picking one. |
 
 ## Development
 

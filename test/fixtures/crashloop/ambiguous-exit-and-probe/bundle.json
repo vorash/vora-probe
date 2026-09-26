@@ -1,0 +1,415 @@
+{
+  "schema_version": "probe/v1",
+  "case": "ambiguous-exit-and-probe",
+  "description": "The container last exited with code 1 while its liveness probe was failing. Either could have ended it, and the evidence does not say which.",
+  "incident": {
+    "schema_version": "probe/v1",
+    "id": "INC-0104",
+    "environment": "lab",
+    "service": "search-api",
+    "symptom": "search-api is in CrashLoopBackOff",
+    "trigger": "manual",
+    "started_at": "2026-09-18T12:31:00Z",
+    "window": {
+      "start": "2026-09-18T12:00:00Z",
+      "end": "2026-09-18T12:30:00Z"
+    },
+    "status": "open",
+    "class": "crashloop"
+  },
+  "planner": [
+    {
+      "hypotheses": [
+        {
+          "statement": "search-api is restarted by the kubelet because its liveness probe fails",
+          "fault_domain": "kubernetes",
+          "claim_kind": "liveness_probe_restart",
+          "evidence_needed": [
+            "probe failure event",
+            "termination state"
+          ]
+        },
+        {
+          "statement": "search-api exits by itself with an application error",
+          "fault_domain": "application",
+          "claim_kind": "application_crash",
+          "evidence_needed": [
+            "termination exit code"
+          ]
+        },
+        {
+          "statement": "search-api exceeded its container memory limit and was terminated",
+          "fault_domain": "kubernetes",
+          "claim_kind": "memory_limit_termination",
+          "evidence_needed": [
+            "container termination reason",
+            "memory working set",
+            "container memory limit"
+          ]
+        }
+      ],
+      "next_action": {
+        "kind": "kubernetes.containers",
+        "entity": "search-api",
+        "reason": "read the recorded termination reason and exit code"
+      },
+      "reason": "collect kubernetes.containers"
+    },
+    {
+      "hypotheses": [
+        {
+          "statement": "search-api is restarted by the kubelet because its liveness probe fails",
+          "fault_domain": "kubernetes",
+          "claim_kind": "liveness_probe_restart",
+          "evidence_needed": [
+            "probe failure event",
+            "termination state"
+          ]
+        },
+        {
+          "statement": "search-api exits by itself with an application error",
+          "fault_domain": "application",
+          "claim_kind": "application_crash",
+          "evidence_needed": [
+            "termination exit code"
+          ]
+        },
+        {
+          "statement": "search-api exceeded its container memory limit and was terminated",
+          "fault_domain": "kubernetes",
+          "claim_kind": "memory_limit_termination",
+          "evidence_needed": [
+            "container termination reason",
+            "memory working set",
+            "container memory limit"
+          ]
+        }
+      ],
+      "next_action": {
+        "kind": "kubernetes.events",
+        "entity": "search-api",
+        "reason": "read the events around the restarts",
+        "window": {
+          "start": "2026-09-18T12:00:00Z",
+          "end": "2026-09-18T12:30:00Z"
+        }
+      },
+      "reason": "collect kubernetes.events"
+    },
+    {
+      "hypotheses": [
+        {
+          "statement": "search-api is restarted by the kubelet because its liveness probe fails",
+          "fault_domain": "kubernetes",
+          "claim_kind": "liveness_probe_restart",
+          "evidence_needed": [
+            "probe failure event",
+            "termination state"
+          ]
+        },
+        {
+          "statement": "search-api exits by itself with an application error",
+          "fault_domain": "application",
+          "claim_kind": "application_crash",
+          "evidence_needed": [
+            "termination exit code"
+          ]
+        },
+        {
+          "statement": "search-api exceeded its container memory limit and was terminated",
+          "fault_domain": "kubernetes",
+          "claim_kind": "memory_limit_termination",
+          "evidence_needed": [
+            "container termination reason",
+            "memory working set",
+            "container memory limit"
+          ]
+        }
+      ],
+      "next_action": {
+        "kind": "metrics.query",
+        "entity": "search-api",
+        "reason": "check whether memory approached the limit",
+        "metric": "container_memory_working_set_bytes",
+        "window": {
+          "start": "2026-09-18T12:00:00Z",
+          "end": "2026-09-18T12:30:00Z"
+        },
+        "resolution": "60s"
+      },
+      "reason": "collect metrics.query container_memory_working_set_bytes"
+    },
+    {
+      "hypotheses": [
+        {
+          "statement": "search-api is restarted by the kubelet because its liveness probe fails",
+          "fault_domain": "kubernetes",
+          "claim_kind": "liveness_probe_restart",
+          "evidence_needed": [
+            "probe failure event",
+            "termination state"
+          ]
+        },
+        {
+          "statement": "search-api exits by itself with an application error",
+          "fault_domain": "application",
+          "claim_kind": "application_crash",
+          "evidence_needed": [
+            "termination exit code"
+          ]
+        },
+        {
+          "statement": "search-api exceeded its container memory limit and was terminated",
+          "fault_domain": "kubernetes",
+          "claim_kind": "memory_limit_termination",
+          "evidence_needed": [
+            "container termination reason",
+            "memory working set",
+            "container memory limit"
+          ]
+        }
+      ],
+      "next_action": {
+        "kind": "metrics.query",
+        "entity": "search-api",
+        "reason": "compare the working set against the configured limit",
+        "metric": "container_spec_memory_limit_bytes",
+        "window": {
+          "start": "2026-09-18T12:00:00Z",
+          "end": "2026-09-18T12:30:00Z"
+        },
+        "resolution": "60s"
+      },
+      "reason": "collect metrics.query container_spec_memory_limit_bytes"
+    },
+    {
+      "hypotheses": [
+        {
+          "statement": "search-api is restarted by the kubelet because its liveness probe fails",
+          "fault_domain": "kubernetes",
+          "claim_kind": "liveness_probe_restart",
+          "evidence_needed": [
+            "probe failure event",
+            "termination state"
+          ]
+        },
+        {
+          "statement": "search-api exits by itself with an application error",
+          "fault_domain": "application",
+          "claim_kind": "application_crash",
+          "evidence_needed": [
+            "termination exit code"
+          ]
+        },
+        {
+          "statement": "search-api exceeded its container memory limit and was terminated",
+          "fault_domain": "kubernetes",
+          "claim_kind": "memory_limit_termination",
+          "evidence_needed": [
+            "container termination reason",
+            "memory working set",
+            "container memory limit"
+          ]
+        }
+      ],
+      "reason": "an application exit and a failing liveness probe are both evidenced; neither is shown to have ended the container"
+    }
+  ],
+  "evidence": [
+    {
+      "action": {
+        "kind": "kubernetes.containers",
+        "entity": "search-api",
+        "reason": "read the recorded termination reason and exit code"
+      },
+      "response": {
+        "schema_version": "probe/v1",
+        "kind": "kubernetes.containers",
+        "entity": "search-api",
+        "status": "ok",
+        "completeness": "complete",
+        "retrieved_at": "2026-09-18T12:31:05Z",
+        "query": {
+          "datasource": "kubernetes",
+          "query": "pods -n lab -l app=search-api"
+        },
+        "digest": "sha256:26465468d322553971c77aa9771fe60e5fa9647cca4deb94d6db98b5fe58ae6e",
+        "payload": {
+          "namespace": "lab",
+          "pods": [
+            {
+              "name": "search-api-8b7c6d5f9-p4n2t",
+              "namespace": "lab",
+              "phase": "Running",
+              "node": "mini-vora",
+              "start_time": "2026-09-18T11:45:00Z",
+              "containers": [
+                {
+                  "name": "app",
+                  "ready": false,
+                  "restart_count": 5,
+                  "state": "waiting",
+                  "last_terminated_at": "2026-09-18T12:22:00Z",
+                  "last_terminated_reason": "Error",
+                  "last_exit_code": 1,
+                  "reason": "CrashLoopBackOff"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "action": {
+        "kind": "kubernetes.events",
+        "entity": "search-api",
+        "reason": "read the events around the restarts",
+        "window": {
+          "start": "2026-09-18T12:00:00Z",
+          "end": "2026-09-18T12:30:00Z"
+        }
+      },
+      "response": {
+        "schema_version": "probe/v1",
+        "kind": "kubernetes.events",
+        "entity": "search-api",
+        "status": "ok",
+        "completeness": "complete",
+        "retrieved_at": "2026-09-18T12:31:07Z",
+        "query": {
+          "datasource": "kubernetes",
+          "query": "events -n lab -l app=search-api"
+        },
+        "digest": "sha256:ed216e7eca14f21b2364c29b95acb926a1f76851b989728948c6a1ba69bef8c1",
+        "payload": {
+          "namespace": "lab",
+          "events": [
+            {
+              "type": "Warning",
+              "reason": "Unhealthy",
+              "message": "Liveness probe failed: HTTP probe failed with statuscode: 500",
+              "involved_object": "search-api-8b7c6d5f9-p4n2t",
+              "count": 9,
+              "first_seen": "2026-09-18T12:04:00Z",
+              "last_seen": "2026-09-18T12:21:50Z"
+            },
+            {
+              "type": "Warning",
+              "reason": "BackOff",
+              "message": "Back-off restarting failed container app in pod search-api-8b7c6d5f9-p4n2t",
+              "involved_object": "search-api-8b7c6d5f9-p4n2t",
+              "count": 5,
+              "first_seen": "2026-09-18T12:05:00Z",
+              "last_seen": "2026-09-18T12:23:00Z"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "action": {
+        "kind": "metrics.query",
+        "entity": "search-api",
+        "reason": "check whether memory approached the limit",
+        "metric": "container_memory_working_set_bytes",
+        "window": {
+          "start": "2026-09-18T12:00:00Z",
+          "end": "2026-09-18T12:30:00Z"
+        },
+        "resolution": "60s"
+      },
+      "response": {
+        "schema_version": "probe/v1",
+        "kind": "metrics.query",
+        "entity": "search-api",
+        "status": "ok",
+        "completeness": "complete",
+        "retrieved_at": "2026-09-18T12:31:08Z",
+        "query": {
+          "datasource": "prometheus",
+          "query": "container_memory_working_set_bytes{service=\"search-api\"}",
+          "params": {
+            "metric": "container_memory_working_set_bytes"
+          },
+          "resolution": "60s"
+        },
+        "digest": "sha256:bc02668837a0d7ef384959ada904d1b69a4e47fbb1e2a4bbf7c9283b8c4c273c",
+        "payload": {
+          "metric": "container_memory_working_set_bytes",
+          "unit": "bytes",
+          "samples": [
+            {
+              "at": "2026-09-18T12:00:00Z",
+              "value": 157286400
+            },
+            {
+              "at": "2026-09-18T12:05:00Z",
+              "value": 159383552
+            },
+            {
+              "at": "2026-09-18T12:10:00Z",
+              "value": 158334976
+            },
+            {
+              "at": "2026-09-18T12:15:00Z",
+              "value": 157286400
+            },
+            {
+              "at": "2026-09-18T12:20:00Z",
+              "value": 159383552
+            },
+            {
+              "at": "2026-09-18T12:25:00Z",
+              "value": 158334976
+            },
+            {
+              "at": "2026-09-18T12:30:00Z",
+              "value": 157286400
+            }
+          ]
+        }
+      }
+    },
+    {
+      "action": {
+        "kind": "metrics.query",
+        "entity": "search-api",
+        "reason": "compare the working set against the configured limit",
+        "metric": "container_spec_memory_limit_bytes",
+        "window": {
+          "start": "2026-09-18T12:00:00Z",
+          "end": "2026-09-18T12:30:00Z"
+        },
+        "resolution": "60s"
+      },
+      "response": {
+        "schema_version": "probe/v1",
+        "kind": "metrics.query",
+        "entity": "search-api",
+        "status": "ok",
+        "completeness": "complete",
+        "retrieved_at": "2026-09-18T12:31:09Z",
+        "query": {
+          "datasource": "prometheus",
+          "query": "container_spec_memory_limit_bytes{service=\"search-api\"}",
+          "params": {
+            "metric": "container_spec_memory_limit_bytes"
+          },
+          "resolution": "60s"
+        },
+        "digest": "sha256:c25f983b28ffa09769b5f03aa94e2202865816c82eac853a2af98c94403a0795",
+        "payload": {
+          "metric": "container_spec_memory_limit_bytes",
+          "unit": "bytes",
+          "samples": [
+            {
+              "at": "2026-09-18T12:30:00Z",
+              "value": 536870912
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

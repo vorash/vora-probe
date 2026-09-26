@@ -22,12 +22,12 @@ import (
 
 func cases(t *testing.T) []string {
 	t.Helper()
-	dirs, err := fixtures.Cases(filepath.Join(fixtures.Root(), "oom"))
+	dirs, err := fixtures.AllCases(fixtures.Root())
 	if err != nil {
 		t.Fatalf("list cases: %v", err)
 	}
-	if len(dirs) < 4 {
-		t.Fatalf("expected the four agreed cases, found %d", len(dirs))
+	if len(dirs) < 8 {
+		t.Fatalf("expected the four agreed cases of each class, found %d", len(dirs))
 	}
 	return dirs
 }

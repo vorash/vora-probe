@@ -1,0 +1,63 @@
+{
+  "schema_version": "probe/v1",
+  "id": "kubelet-kill-is-not-a-memory-kill",
+  "split": "dev",
+  "rationale": "Exit 137 with reason Error is a SIGKILL from the kubelet, not a memory-limit kill, which Kubernetes records as OOMKilled. The termination contradicts the memory hypothesis.",
+  "entity": "checkout-api",
+  "hypothesis": {
+    "statement": "checkout-api exceeded its container memory limit and was terminated",
+    "fault_domain": "kubernetes",
+    "claim_kind": "memory_limit_termination"
+  },
+  "evidence": [
+    {
+      "action": {
+        "kind": "kubernetes.containers",
+        "entity": "checkout-api",
+        "reason": "read the termination history"
+      },
+      "response": {
+        "schema_version": "probe/v1",
+        "kind": "kubernetes.containers",
+        "entity": "checkout-api",
+        "status": "ok",
+        "completeness": "complete",
+        "retrieved_at": "2026-09-18T12:31:07Z",
+        "query": {
+          "datasource": "kubernetes",
+          "query": "pods -n lab -l app=checkout-api"
+        },
+        "digest": "sha256:3ade57400fd8d1a42750f56467ca99628dbee423135186f8b8591efd0ebeb0cf",
+        "payload": {
+          "namespace": "lab",
+          "pods": [
+            {
+              "name": "checkout-api-7c4b9f8d6-q2m8x",
+              "namespace": "lab",
+              "phase": "Running",
+              "node": "mini-vora",
+              "start_time": "2026-09-18T11:40:00Z",
+              "containers": [
+                {
+                  "name": "app",
+                  "ready": false,
+                  "restart_count": 5,
+                  "state": "waiting",
+                  "reason": "CrashLoopBackOff",
+                  "last_terminated_at": "2026-09-18T12:21:04Z",
+                  "last_terminated_reason": "Error",
+                  "last_exit_code": 137
+                }
+              ]
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "target": "OBS-0001",
+  "expected": "contradicts",
+  "forbidden": [
+    "supports"
+  ]
+}

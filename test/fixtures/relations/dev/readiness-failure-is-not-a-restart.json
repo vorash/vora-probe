@@ -1,0 +1,101 @@
+{
+  "schema_version": "probe/v1",
+  "id": "readiness-failure-is-not-a-restart",
+  "split": "dev",
+  "rationale": "A readiness probe failure takes the pod out of service and never restarts it, so it cannot show that the liveness probe restarts the container.",
+  "entity": "checkout-api",
+  "hypothesis": {
+    "statement": "checkout-api is restarted by the kubelet because its liveness probe fails",
+    "fault_domain": "kubernetes",
+    "claim_kind": "liveness_probe_restart"
+  },
+  "evidence": [
+    {
+      "action": {
+        "kind": "kubernetes.containers",
+        "entity": "checkout-api",
+        "reason": "read the termination history"
+      },
+      "response": {
+        "schema_version": "probe/v1",
+        "kind": "kubernetes.containers",
+        "entity": "checkout-api",
+        "status": "ok",
+        "completeness": "complete",
+        "retrieved_at": "2026-09-18T12:31:07Z",
+        "query": {
+          "datasource": "kubernetes",
+          "query": "pods -n lab -l app=checkout-api"
+        },
+        "digest": "sha256:9668d60e2cdd636f1c98138153b9039a626c31b48cc880edc080ca32779f2843",
+        "payload": {
+          "namespace": "lab",
+          "pods": [
+            {
+              "name": "checkout-api-7c4b9f8d6-q2m8x",
+              "namespace": "lab",
+              "phase": "Running",
+              "node": "mini-vora",
+              "start_time": "2026-09-18T11:40:00Z",
+              "containers": [
+                {
+                  "name": "app",
+                  "ready": false,
+                  "restart_count": 5,
+                  "state": "waiting",
+                  "reason": "CrashLoopBackOff",
+                  "last_terminated_at": "2026-09-18T12:21:04Z",
+                  "last_terminated_reason": "Error",
+                  "last_exit_code": 1
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "action": {
+        "kind": "kubernetes.events",
+        "entity": "checkout-api",
+        "reason": "read the probe events",
+        "window": {
+          "start": "2026-09-18T12:00:00Z",
+          "end": "2026-09-18T12:30:00Z"
+        }
+      },
+      "response": {
+        "schema_version": "probe/v1",
+        "kind": "kubernetes.events",
+        "entity": "checkout-api",
+        "status": "ok",
+        "completeness": "complete",
+        "retrieved_at": "2026-09-18T12:31:08Z",
+        "query": {
+          "datasource": "kubernetes",
+          "query": "events -n lab -l app=checkout-api"
+        },
+        "digest": "sha256:7a47b0833d3c08737223ea878076499d8ddec9f9b3428fdb370bb694c144b8a0",
+        "payload": {
+          "namespace": "lab",
+          "events": [
+            {
+              "type": "Warning",
+              "reason": "Unhealthy",
+              "message": "Readiness probe failed: HTTP probe failed with statuscode: 503",
+              "involved_object": "checkout-api-7c4b9f8d6-q2m8x",
+              "count": 7,
+              "first_seen": "2026-09-18T12:03:00Z",
+              "last_seen": "2026-09-18T12:20:00Z"
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "target": "OBS-0002",
+  "expected": "insufficient_context",
+  "forbidden": [
+    "supports"
+  ]
+}

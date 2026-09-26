@@ -1,0 +1,424 @@
+{
+  "schema_version": "probe/v1",
+  "case": "liveness-restart",
+  "description": "Liveness probes fail and the kubelet kills the container (exit 137, reason Error, not OOMKilled). Memory stays far below the limit.",
+  "incident": {
+    "schema_version": "probe/v1",
+    "id": "INC-0101",
+    "environment": "lab",
+    "service": "checkout-api",
+    "symptom": "checkout-api is in CrashLoopBackOff",
+    "trigger": "manual",
+    "started_at": "2026-09-18T12:31:00Z",
+    "window": {
+      "start": "2026-09-18T12:00:00Z",
+      "end": "2026-09-18T12:30:00Z"
+    },
+    "status": "open",
+    "class": "crashloop"
+  },
+  "planner": [
+    {
+      "hypotheses": [
+        {
+          "statement": "checkout-api is restarted by the kubelet because its liveness probe fails",
+          "fault_domain": "kubernetes",
+          "claim_kind": "liveness_probe_restart",
+          "evidence_needed": [
+            "probe failure event",
+            "termination state"
+          ]
+        },
+        {
+          "statement": "checkout-api exits by itself with an application error",
+          "fault_domain": "application",
+          "claim_kind": "application_crash",
+          "evidence_needed": [
+            "termination exit code"
+          ]
+        },
+        {
+          "statement": "checkout-api exceeded its container memory limit and was terminated",
+          "fault_domain": "kubernetes",
+          "claim_kind": "memory_limit_termination",
+          "evidence_needed": [
+            "container termination reason",
+            "memory working set",
+            "container memory limit"
+          ]
+        }
+      ],
+      "next_action": {
+        "kind": "kubernetes.containers",
+        "entity": "checkout-api",
+        "reason": "read the recorded termination reason and exit code"
+      },
+      "reason": "collect kubernetes.containers"
+    },
+    {
+      "hypotheses": [
+        {
+          "statement": "checkout-api is restarted by the kubelet because its liveness probe fails",
+          "fault_domain": "kubernetes",
+          "claim_kind": "liveness_probe_restart",
+          "evidence_needed": [
+            "probe failure event",
+            "termination state"
+          ]
+        },
+        {
+          "statement": "checkout-api exits by itself with an application error",
+          "fault_domain": "application",
+          "claim_kind": "application_crash",
+          "evidence_needed": [
+            "termination exit code"
+          ]
+        },
+        {
+          "statement": "checkout-api exceeded its container memory limit and was terminated",
+          "fault_domain": "kubernetes",
+          "claim_kind": "memory_limit_termination",
+          "evidence_needed": [
+            "container termination reason",
+            "memory working set",
+            "container memory limit"
+          ]
+        }
+      ],
+      "next_action": {
+        "kind": "kubernetes.events",
+        "entity": "checkout-api",
+        "reason": "read the events around the restarts",
+        "window": {
+          "start": "2026-09-18T12:00:00Z",
+          "end": "2026-09-18T12:30:00Z"
+        }
+      },
+      "reason": "collect kubernetes.events"
+    },
+    {
+      "hypotheses": [
+        {
+          "statement": "checkout-api is restarted by the kubelet because its liveness probe fails",
+          "fault_domain": "kubernetes",
+          "claim_kind": "liveness_probe_restart",
+          "evidence_needed": [
+            "probe failure event",
+            "termination state"
+          ]
+        },
+        {
+          "statement": "checkout-api exits by itself with an application error",
+          "fault_domain": "application",
+          "claim_kind": "application_crash",
+          "evidence_needed": [
+            "termination exit code"
+          ]
+        },
+        {
+          "statement": "checkout-api exceeded its container memory limit and was terminated",
+          "fault_domain": "kubernetes",
+          "claim_kind": "memory_limit_termination",
+          "evidence_needed": [
+            "container termination reason",
+            "memory working set",
+            "container memory limit"
+          ]
+        }
+      ],
+      "next_action": {
+        "kind": "metrics.query",
+        "entity": "checkout-api",
+        "reason": "check whether memory approached the limit",
+        "metric": "container_memory_working_set_bytes",
+        "window": {
+          "start": "2026-09-18T12:00:00Z",
+          "end": "2026-09-18T12:30:00Z"
+        },
+        "resolution": "60s"
+      },
+      "reason": "collect metrics.query container_memory_working_set_bytes"
+    },
+    {
+      "hypotheses": [
+        {
+          "statement": "checkout-api is restarted by the kubelet because its liveness probe fails",
+          "fault_domain": "kubernetes",
+          "claim_kind": "liveness_probe_restart",
+          "evidence_needed": [
+            "probe failure event",
+            "termination state"
+          ]
+        },
+        {
+          "statement": "checkout-api exits by itself with an application error",
+          "fault_domain": "application",
+          "claim_kind": "application_crash",
+          "evidence_needed": [
+            "termination exit code"
+          ]
+        },
+        {
+          "statement": "checkout-api exceeded its container memory limit and was terminated",
+          "fault_domain": "kubernetes",
+          "claim_kind": "memory_limit_termination",
+          "evidence_needed": [
+            "container termination reason",
+            "memory working set",
+            "container memory limit"
+          ]
+        }
+      ],
+      "next_action": {
+        "kind": "metrics.query",
+        "entity": "checkout-api",
+        "reason": "compare the working set against the configured limit",
+        "metric": "container_spec_memory_limit_bytes",
+        "window": {
+          "start": "2026-09-18T12:00:00Z",
+          "end": "2026-09-18T12:30:00Z"
+        },
+        "resolution": "60s"
+      },
+      "reason": "collect metrics.query container_spec_memory_limit_bytes"
+    },
+    {
+      "hypotheses": [
+        {
+          "statement": "checkout-api is restarted by the kubelet because its liveness probe fails",
+          "fault_domain": "kubernetes",
+          "claim_kind": "liveness_probe_restart",
+          "evidence_needed": [
+            "probe failure event",
+            "termination state"
+          ]
+        },
+        {
+          "statement": "checkout-api exits by itself with an application error",
+          "fault_domain": "application",
+          "claim_kind": "application_crash",
+          "evidence_needed": [
+            "termination exit code"
+          ]
+        },
+        {
+          "statement": "checkout-api exceeded its container memory limit and was terminated",
+          "fault_domain": "kubernetes",
+          "claim_kind": "memory_limit_termination",
+          "evidence_needed": [
+            "container termination reason",
+            "memory working set",
+            "container memory limit"
+          ]
+        }
+      ],
+      "reason": "the kubelet kills the container for a failing liveness probe; memory is far below the limit"
+    }
+  ],
+  "evidence": [
+    {
+      "action": {
+        "kind": "kubernetes.containers",
+        "entity": "checkout-api",
+        "reason": "read the recorded termination reason and exit code"
+      },
+      "response": {
+        "schema_version": "probe/v1",
+        "kind": "kubernetes.containers",
+        "entity": "checkout-api",
+        "status": "ok",
+        "completeness": "complete",
+        "retrieved_at": "2026-09-18T12:31:05Z",
+        "query": {
+          "datasource": "kubernetes",
+          "query": "pods -n lab -l app=checkout-api"
+        },
+        "digest": "sha256:a2f298fbdbf69e8cb5480f23d01750f33361ce70224b9a8444ebe4ae7486a34c",
+        "payload": {
+          "namespace": "lab",
+          "pods": [
+            {
+              "name": "checkout-api-7c4b9f8d6-q2m8x",
+              "namespace": "lab",
+              "phase": "Running",
+              "node": "mini-vora",
+              "start_time": "2026-09-18T11:40:00Z",
+              "containers": [
+                {
+                  "name": "app",
+                  "ready": false,
+                  "restart_count": 6,
+                  "state": "waiting",
+                  "last_terminated_at": "2026-09-18T12:26:40Z",
+                  "last_terminated_reason": "Error",
+                  "last_exit_code": 137,
+                  "reason": "CrashLoopBackOff"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "action": {
+        "kind": "kubernetes.events",
+        "entity": "checkout-api",
+        "reason": "read the events around the restarts",
+        "window": {
+          "start": "2026-09-18T12:00:00Z",
+          "end": "2026-09-18T12:30:00Z"
+        }
+      },
+      "response": {
+        "schema_version": "probe/v1",
+        "kind": "kubernetes.events",
+        "entity": "checkout-api",
+        "status": "ok",
+        "completeness": "complete",
+        "retrieved_at": "2026-09-18T12:31:07Z",
+        "query": {
+          "datasource": "kubernetes",
+          "query": "events -n lab -l app=checkout-api"
+        },
+        "digest": "sha256:a8023949c48a77263b1e5bba6c88204baf5e99917ffbf95d07b18071da6dac5f",
+        "payload": {
+          "namespace": "lab",
+          "events": [
+            {
+              "type": "Warning",
+              "reason": "Unhealthy",
+              "message": "Liveness probe failed: Get \"http://10.1.2.40:8080/healthz\": context deadline exceeded",
+              "involved_object": "checkout-api-7c4b9f8d6-q2m8x",
+              "count": 18,
+              "first_seen": "2026-09-18T12:02:10Z",
+              "last_seen": "2026-09-18T12:26:30Z"
+            },
+            {
+              "type": "Normal",
+              "reason": "Killing",
+              "message": "Container app failed liveness probe, will be restarted",
+              "involved_object": "checkout-api-7c4b9f8d6-q2m8x",
+              "count": 6,
+              "first_seen": "2026-09-18T12:02:40Z",
+              "last_seen": "2026-09-18T12:26:40Z"
+            },
+            {
+              "type": "Warning",
+              "reason": "BackOff",
+              "message": "Back-off restarting failed container app in pod checkout-api-7c4b9f8d6-q2m8x",
+              "involved_object": "checkout-api-7c4b9f8d6-q2m8x",
+              "count": 6,
+              "first_seen": "2026-09-18T12:03:00Z",
+              "last_seen": "2026-09-18T12:27:00Z"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "action": {
+        "kind": "metrics.query",
+        "entity": "checkout-api",
+        "reason": "check whether memory approached the limit",
+        "metric": "container_memory_working_set_bytes",
+        "window": {
+          "start": "2026-09-18T12:00:00Z",
+          "end": "2026-09-18T12:30:00Z"
+        },
+        "resolution": "60s"
+      },
+      "response": {
+        "schema_version": "probe/v1",
+        "kind": "metrics.query",
+        "entity": "checkout-api",
+        "status": "ok",
+        "completeness": "complete",
+        "retrieved_at": "2026-09-18T12:31:08Z",
+        "query": {
+          "datasource": "prometheus",
+          "query": "container_memory_working_set_bytes{service=\"checkout-api\"}",
+          "params": {
+            "metric": "container_memory_working_set_bytes"
+          },
+          "resolution": "60s"
+        },
+        "digest": "sha256:63ad2a0590e29e21c4c24b9f9ccc06b78e817b34da1d6b6727088de3b380aea0",
+        "payload": {
+          "metric": "container_memory_working_set_bytes",
+          "unit": "bytes",
+          "samples": [
+            {
+              "at": "2026-09-18T12:00:00Z",
+              "value": 125829120
+            },
+            {
+              "at": "2026-09-18T12:05:00Z",
+              "value": 127926272
+            },
+            {
+              "at": "2026-09-18T12:10:00Z",
+              "value": 126877696
+            },
+            {
+              "at": "2026-09-18T12:15:00Z",
+              "value": 125829120
+            },
+            {
+              "at": "2026-09-18T12:20:00Z",
+              "value": 127926272
+            },
+            {
+              "at": "2026-09-18T12:25:00Z",
+              "value": 126877696
+            },
+            {
+              "at": "2026-09-18T12:30:00Z",
+              "value": 125829120
+            }
+          ]
+        }
+      }
+    },
+    {
+      "action": {
+        "kind": "metrics.query",
+        "entity": "checkout-api",
+        "reason": "compare the working set against the configured limit",
+        "metric": "container_spec_memory_limit_bytes",
+        "window": {
+          "start": "2026-09-18T12:00:00Z",
+          "end": "2026-09-18T12:30:00Z"
+        },
+        "resolution": "60s"
+      },
+      "response": {
+        "schema_version": "probe/v1",
+        "kind": "metrics.query",
+        "entity": "checkout-api",
+        "status": "ok",
+        "completeness": "complete",
+        "retrieved_at": "2026-09-18T12:31:09Z",
+        "query": {
+          "datasource": "prometheus",
+          "query": "container_spec_memory_limit_bytes{service=\"checkout-api\"}",
+          "params": {
+            "metric": "container_spec_memory_limit_bytes"
+          },
+          "resolution": "60s"
+        },
+        "digest": "sha256:c25f983b28ffa09769b5f03aa94e2202865816c82eac853a2af98c94403a0795",
+        "payload": {
+          "metric": "container_spec_memory_limit_bytes",
+          "unit": "bytes",
+          "samples": [
+            {
+              "at": "2026-09-18T12:30:00Z",
+              "value": 536870912
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

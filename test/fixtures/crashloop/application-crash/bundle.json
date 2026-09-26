@@ -1,0 +1,406 @@
+{
+  "schema_version": "probe/v1",
+  "case": "application-crash",
+  "description": "The container exits with code 1 by itself; no probe fails and memory is flat.",
+  "incident": {
+    "schema_version": "probe/v1",
+    "id": "INC-0102",
+    "environment": "lab",
+    "service": "orders-api",
+    "symptom": "orders-api is in CrashLoopBackOff",
+    "trigger": "manual",
+    "started_at": "2026-09-18T12:31:00Z",
+    "window": {
+      "start": "2026-09-18T12:00:00Z",
+      "end": "2026-09-18T12:30:00Z"
+    },
+    "status": "open",
+    "class": "crashloop"
+  },
+  "planner": [
+    {
+      "hypotheses": [
+        {
+          "statement": "orders-api exits by itself with an application error",
+          "fault_domain": "application",
+          "claim_kind": "application_crash",
+          "evidence_needed": [
+            "termination exit code"
+          ]
+        },
+        {
+          "statement": "orders-api is restarted by the kubelet because its liveness probe fails",
+          "fault_domain": "kubernetes",
+          "claim_kind": "liveness_probe_restart",
+          "evidence_needed": [
+            "probe failure event",
+            "termination state"
+          ]
+        },
+        {
+          "statement": "orders-api exceeded its container memory limit and was terminated",
+          "fault_domain": "kubernetes",
+          "claim_kind": "memory_limit_termination",
+          "evidence_needed": [
+            "container termination reason",
+            "memory working set",
+            "container memory limit"
+          ]
+        }
+      ],
+      "next_action": {
+        "kind": "kubernetes.containers",
+        "entity": "orders-api",
+        "reason": "read the recorded termination reason and exit code"
+      },
+      "reason": "collect kubernetes.containers"
+    },
+    {
+      "hypotheses": [
+        {
+          "statement": "orders-api exits by itself with an application error",
+          "fault_domain": "application",
+          "claim_kind": "application_crash",
+          "evidence_needed": [
+            "termination exit code"
+          ]
+        },
+        {
+          "statement": "orders-api is restarted by the kubelet because its liveness probe fails",
+          "fault_domain": "kubernetes",
+          "claim_kind": "liveness_probe_restart",
+          "evidence_needed": [
+            "probe failure event",
+            "termination state"
+          ]
+        },
+        {
+          "statement": "orders-api exceeded its container memory limit and was terminated",
+          "fault_domain": "kubernetes",
+          "claim_kind": "memory_limit_termination",
+          "evidence_needed": [
+            "container termination reason",
+            "memory working set",
+            "container memory limit"
+          ]
+        }
+      ],
+      "next_action": {
+        "kind": "kubernetes.events",
+        "entity": "orders-api",
+        "reason": "read the events around the restarts",
+        "window": {
+          "start": "2026-09-18T12:00:00Z",
+          "end": "2026-09-18T12:30:00Z"
+        }
+      },
+      "reason": "collect kubernetes.events"
+    },
+    {
+      "hypotheses": [
+        {
+          "statement": "orders-api exits by itself with an application error",
+          "fault_domain": "application",
+          "claim_kind": "application_crash",
+          "evidence_needed": [
+            "termination exit code"
+          ]
+        },
+        {
+          "statement": "orders-api is restarted by the kubelet because its liveness probe fails",
+          "fault_domain": "kubernetes",
+          "claim_kind": "liveness_probe_restart",
+          "evidence_needed": [
+            "probe failure event",
+            "termination state"
+          ]
+        },
+        {
+          "statement": "orders-api exceeded its container memory limit and was terminated",
+          "fault_domain": "kubernetes",
+          "claim_kind": "memory_limit_termination",
+          "evidence_needed": [
+            "container termination reason",
+            "memory working set",
+            "container memory limit"
+          ]
+        }
+      ],
+      "next_action": {
+        "kind": "metrics.query",
+        "entity": "orders-api",
+        "reason": "check whether memory approached the limit",
+        "metric": "container_memory_working_set_bytes",
+        "window": {
+          "start": "2026-09-18T12:00:00Z",
+          "end": "2026-09-18T12:30:00Z"
+        },
+        "resolution": "60s"
+      },
+      "reason": "collect metrics.query container_memory_working_set_bytes"
+    },
+    {
+      "hypotheses": [
+        {
+          "statement": "orders-api exits by itself with an application error",
+          "fault_domain": "application",
+          "claim_kind": "application_crash",
+          "evidence_needed": [
+            "termination exit code"
+          ]
+        },
+        {
+          "statement": "orders-api is restarted by the kubelet because its liveness probe fails",
+          "fault_domain": "kubernetes",
+          "claim_kind": "liveness_probe_restart",
+          "evidence_needed": [
+            "probe failure event",
+            "termination state"
+          ]
+        },
+        {
+          "statement": "orders-api exceeded its container memory limit and was terminated",
+          "fault_domain": "kubernetes",
+          "claim_kind": "memory_limit_termination",
+          "evidence_needed": [
+            "container termination reason",
+            "memory working set",
+            "container memory limit"
+          ]
+        }
+      ],
+      "next_action": {
+        "kind": "metrics.query",
+        "entity": "orders-api",
+        "reason": "compare the working set against the configured limit",
+        "metric": "container_spec_memory_limit_bytes",
+        "window": {
+          "start": "2026-09-18T12:00:00Z",
+          "end": "2026-09-18T12:30:00Z"
+        },
+        "resolution": "60s"
+      },
+      "reason": "collect metrics.query container_spec_memory_limit_bytes"
+    },
+    {
+      "hypotheses": [
+        {
+          "statement": "orders-api exits by itself with an application error",
+          "fault_domain": "application",
+          "claim_kind": "application_crash",
+          "evidence_needed": [
+            "termination exit code"
+          ]
+        },
+        {
+          "statement": "orders-api is restarted by the kubelet because its liveness probe fails",
+          "fault_domain": "kubernetes",
+          "claim_kind": "liveness_probe_restart",
+          "evidence_needed": [
+            "probe failure event",
+            "termination state"
+          ]
+        },
+        {
+          "statement": "orders-api exceeded its container memory limit and was terminated",
+          "fault_domain": "kubernetes",
+          "claim_kind": "memory_limit_termination",
+          "evidence_needed": [
+            "container termination reason",
+            "memory working set",
+            "container memory limit"
+          ]
+        }
+      ],
+      "reason": "the container exits with code 1 by itself and no probe fails"
+    }
+  ],
+  "evidence": [
+    {
+      "action": {
+        "kind": "kubernetes.containers",
+        "entity": "orders-api",
+        "reason": "read the recorded termination reason and exit code"
+      },
+      "response": {
+        "schema_version": "probe/v1",
+        "kind": "kubernetes.containers",
+        "entity": "orders-api",
+        "status": "ok",
+        "completeness": "complete",
+        "retrieved_at": "2026-09-18T12:31:05Z",
+        "query": {
+          "datasource": "kubernetes",
+          "query": "pods -n lab -l app=orders-api"
+        },
+        "digest": "sha256:a66d09c25736be9bc82a3ce266b303f777b62c9f56702aa913382f45f05afbf2",
+        "payload": {
+          "namespace": "lab",
+          "pods": [
+            {
+              "name": "orders-api-5d9c7b6f4-x7kqp",
+              "namespace": "lab",
+              "phase": "Running",
+              "node": "mini-vora",
+              "start_time": "2026-09-18T11:50:00Z",
+              "containers": [
+                {
+                  "name": "app",
+                  "ready": false,
+                  "restart_count": 4,
+                  "state": "waiting",
+                  "last_terminated_at": "2026-09-18T12:24:10Z",
+                  "last_terminated_reason": "Error",
+                  "last_exit_code": 1,
+                  "reason": "CrashLoopBackOff"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "action": {
+        "kind": "kubernetes.events",
+        "entity": "orders-api",
+        "reason": "read the events around the restarts",
+        "window": {
+          "start": "2026-09-18T12:00:00Z",
+          "end": "2026-09-18T12:30:00Z"
+        }
+      },
+      "response": {
+        "schema_version": "probe/v1",
+        "kind": "kubernetes.events",
+        "entity": "orders-api",
+        "status": "ok",
+        "completeness": "complete",
+        "retrieved_at": "2026-09-18T12:31:07Z",
+        "query": {
+          "datasource": "kubernetes",
+          "query": "events -n lab -l app=orders-api"
+        },
+        "digest": "sha256:44092c3e35c5690e8fe09a47f8fdaec91b130e73cabdff6e8e494bacdc86f78b",
+        "payload": {
+          "namespace": "lab",
+          "events": [
+            {
+              "type": "Warning",
+              "reason": "BackOff",
+              "message": "Back-off restarting failed container app in pod orders-api-5d9c7b6f4-x7kqp",
+              "involved_object": "orders-api-5d9c7b6f4-x7kqp",
+              "count": 4,
+              "first_seen": "2026-09-18T12:05:00Z",
+              "last_seen": "2026-09-18T12:25:00Z"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "action": {
+        "kind": "metrics.query",
+        "entity": "orders-api",
+        "reason": "check whether memory approached the limit",
+        "metric": "container_memory_working_set_bytes",
+        "window": {
+          "start": "2026-09-18T12:00:00Z",
+          "end": "2026-09-18T12:30:00Z"
+        },
+        "resolution": "60s"
+      },
+      "response": {
+        "schema_version": "probe/v1",
+        "kind": "metrics.query",
+        "entity": "orders-api",
+        "status": "ok",
+        "completeness": "complete",
+        "retrieved_at": "2026-09-18T12:31:08Z",
+        "query": {
+          "datasource": "prometheus",
+          "query": "container_memory_working_set_bytes{service=\"orders-api\"}",
+          "params": {
+            "metric": "container_memory_working_set_bytes"
+          },
+          "resolution": "60s"
+        },
+        "digest": "sha256:02ca2d43c6b4dfa6443826cfa4c7d7460a9e1aa166f8c607b96f48d0702e084e",
+        "payload": {
+          "metric": "container_memory_working_set_bytes",
+          "unit": "bytes",
+          "samples": [
+            {
+              "at": "2026-09-18T12:00:00Z",
+              "value": 94371840
+            },
+            {
+              "at": "2026-09-18T12:05:00Z",
+              "value": 96468992
+            },
+            {
+              "at": "2026-09-18T12:10:00Z",
+              "value": 95420416
+            },
+            {
+              "at": "2026-09-18T12:15:00Z",
+              "value": 94371840
+            },
+            {
+              "at": "2026-09-18T12:20:00Z",
+              "value": 96468992
+            },
+            {
+              "at": "2026-09-18T12:25:00Z",
+              "value": 95420416
+            },
+            {
+              "at": "2026-09-18T12:30:00Z",
+              "value": 94371840
+            }
+          ]
+        }
+      }
+    },
+    {
+      "action": {
+        "kind": "metrics.query",
+        "entity": "orders-api",
+        "reason": "compare the working set against the configured limit",
+        "metric": "container_spec_memory_limit_bytes",
+        "window": {
+          "start": "2026-09-18T12:00:00Z",
+          "end": "2026-09-18T12:30:00Z"
+        },
+        "resolution": "60s"
+      },
+      "response": {
+        "schema_version": "probe/v1",
+        "kind": "metrics.query",
+        "entity": "orders-api",
+        "status": "ok",
+        "completeness": "complete",
+        "retrieved_at": "2026-09-18T12:31:09Z",
+        "query": {
+          "datasource": "prometheus",
+          "query": "container_spec_memory_limit_bytes{service=\"orders-api\"}",
+          "params": {
+            "metric": "container_spec_memory_limit_bytes"
+          },
+          "resolution": "60s"
+        },
+        "digest": "sha256:c25f983b28ffa09769b5f03aa94e2202865816c82eac853a2af98c94403a0795",
+        "payload": {
+          "metric": "container_spec_memory_limit_bytes",
+          "unit": "bytes",
+          "samples": [
+            {
+              "at": "2026-09-18T12:30:00Z",
+              "value": 536870912
+            }
+          ]
+        }
+      }
+    }
+  ]
+}
