@@ -130,6 +130,27 @@ Routes: `POST /webhook/alertmanager`, and read-only `GET /incidents` and
 `GET /healthz` is open. An empty token refuses to start. A payload that cannot
 be acted on gets a `4xx`, which Alertmanager does not retry.
 
+### Server mode
+
+`vora-probe serve --config` puts intake in front of a queue (`internal/serve`).
+An opened incident is either queued or recorded as `rate_limited`: each alert
+group, and each entity (pod or host), may start only a bounded number of
+investigations in a rolling window (defaults: 3 per group and 5 per entity per
+hour), so a flapping alert cannot monopolise the worker. Nothing is dropped;
+the record says why it was held back.
+
+One worker takes incidents in arrival order, so there is one investigation at
+a time, as the CLI's lock guarantees. Each run is bounded by its wall-clock
+budget. When the deadline passes, the run is closed with a report and the
+worker moves on, so a stalled planner cannot hold the queue. The incident
+record tracks `queued`, `rate_limited`, `investigating`, `concluded`,
+`not_concluded`, or `error` (no report could be written), with the report
+path. The worker runs in-process by default (`probe.Run`), or in a Vora sandbox
+when the config names a Vora API. The server refuses to start without a bearer
+token, a planner endpoint, a deadline, or positive rate limits. It listens on
+`127.0.0.1:9480` unless told otherwise. Incidents are held in memory until the
+incident store (P1.3) persists them.
+
 ## Determinism
 
 Replay is byte-identical across runs, which is what makes a saved report worth
@@ -170,6 +191,14 @@ it states no leading claim, evaluates no claims and recommends nothing, because
 a verdict on partial evidence reads as a conclusion whatever it is labelled.
 Callers also get `probe.ErrNotConcluded` beside the report, so nothing
 downstream counts the run as a finding; the CLI exits non-zero.
+
+The same holds when the controller cannot continue: the planner stalls past the
+deadline (`budget_exhausted`), or a request is refused, or the worker or its
+sandbox fails (`failed`). `Engine.Abandon` closes the run from the last state
+the controller holds, records the cause as an escalation, and publishes that
+report. The cause is kept in the returned error, so an interrupted worker is
+still `ErrInterrupted`. Only a controller that dies outright leaves no report;
+its journal still shows the unanswered request.
 
 ## Policy layers
 

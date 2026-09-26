@@ -37,6 +37,10 @@ usage:
   vora-probe investigate --config <lab.json>
         run an investigation against the live lab: the worker in a Vora sandbox,
         Prometheus and Kubernetes evidence, and model-driven planning
+  vora-probe serve --config <serve.json>
+        receive Alertmanager webhooks and investigate each new incident, one at a
+        time, with rate limits and a deadline per run; the worker runs in-process
+        unless a Vora API is configured
   vora-probe verify [<fixtures-root>]
         check fixture integrity and the hidden answer keys
   vora-probe version
@@ -65,6 +69,8 @@ func run(args []string) error {
 		return evaluate(args[1:])
 	case "investigate":
 		return investigate(args[1:])
+	case "serve":
+		return serveCommand(args[1:])
 	case "verify":
 		return verify(args[1:])
 	case "version":

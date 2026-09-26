@@ -422,6 +422,21 @@ func (e *Engine) decide(s *state, outcome Outcome, reason, hypothesis string) De
 	return d
 }
 
+// Abandon closes a run the controller could not continue: the planner stalled
+// past the deadline, the gateway refused, or the worker failed. It works from
+// the last state the controller holds, records why as an escalation, and
+// publishes the same report a run that ended itself would, one that does not
+// conclude. Without it, exactly the runs an operator most needs to read
+// would leave nothing but a journal.
+func (e *Engine) Abandon(env StepEnvelope, status RunStatus, reason string) (StepResult, error) {
+	if status != RunFailed && status != RunBudgetExhausted {
+		return StepResult{}, fmt.Errorf("a run can only be abandoned as %s or %s, not %q", RunFailed, RunBudgetExhausted, status)
+	}
+	s := &state{env: env, ids: NewIDGenFrom(env.Counters)}
+	e.decide(s, OutcomeEscalate, "the controller could not continue the run: "+reason, "")
+	return e.finish(s, status, reason)
+}
+
 // finish closes a run that did not conclude. It still publishes a report, built
 // by code from the state, because a run that stops is exactly the one an
 // operator has to read; the report states no finding, so it is never presented
