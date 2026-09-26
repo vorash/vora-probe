@@ -226,6 +226,9 @@ func writeEvidenceIndex(b *strings.Builder, l EvidenceLink) {
 			l.RetrievedAt.UTC().Format("2006-01-02T15:04:05Z"))
 	}
 	fmt.Fprintf(b, "  - digest: `%s`\n", l.Digest)
+	if l.URL != "" {
+		fmt.Fprintf(b, "  - open: <%s>\n", l.URL)
+	}
 }
 
 // cell escapes a value for a markdown table cell. Evidence targets contain

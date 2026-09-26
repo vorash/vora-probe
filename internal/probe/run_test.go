@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -75,5 +76,57 @@ func TestAStalledPlannerEndsTheRunWithAReportAtTheDeadline(t *testing.T) {
 	last := report.Decisions[len(report.Decisions)-1]
 	if last.Outcome != investigation.OutcomeEscalate {
 		t.Fatalf("the reason the controller gave up must be recorded as an escalation; last decision = %+v", last)
+	}
+}
+
+// Evidence links let a reader check the evidence itself. A run told where the
+// Prometheus UI is links each metric observation to its exact query and window,
+// and links nothing else; a run that was not told carries no links, so replays
+// stay byte-identical.
+func TestARunLinksMetricEvidenceOnlyWhenToldWhere(t *testing.T) {
+	bundle, err := loadBundle(filepath.Join(fixtures.Root(), "oom", "oom-positive"))
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	run := func(evidenceURL string) investigation.Report {
+		engine := defaultEngine()
+		gw, err := openFixtureGateway(engine, bundle, wallClock)
+		if err != nil {
+			t.Fatalf("gateway: %v", err)
+		}
+		incident := bundle.Incident
+		incident.StartedAt = time.Now().UTC()
+		result, err := Run(context.Background(), RunOptions{Incident: incident, Engine: engine, OutDir: t.TempDir(),
+			Planner: models.NewRecordedPlanner(plannerTurns(bundle)), Gateway: gw, EvidenceURL: evidenceURL})
+		if err != nil {
+			t.Fatalf("run: %v", err)
+		}
+		return result.Report
+	}
+
+	linked := run("http://prometheus.lab:9090")
+	links := 0
+	for _, l := range append(append(linked.Supporting, linked.Contradicting...), linked.InsufficientContext...) {
+		switch {
+		case l.Query.Datasource == "prometheus" && !strings.HasPrefix(l.URL, "http://prometheus.lab:9090/graph?"):
+			t.Errorf("metric evidence %s has no graph link: %q", l.Observation, l.URL)
+		case l.Query.Datasource != "prometheus" && l.URL != "":
+			t.Errorf("%s evidence %s was given a link %q", l.Query.Datasource, l.Observation, l.URL)
+		case l.URL != "":
+			links++
+		}
+	}
+	if links == 0 {
+		t.Fatal("the positive case cites metric evidence, and none of it was linked")
+	}
+	if !strings.Contains(linked.Markdown(), "open: <http://prometheus.lab:9090/graph?") {
+		t.Fatal("the rendered report must show the link")
+	}
+
+	plain := run("")
+	for _, l := range plain.Supporting {
+		if l.URL != "" {
+			t.Fatalf("a run not told where the UI is carries a link: %q", l.URL)
+		}
 	}
 }

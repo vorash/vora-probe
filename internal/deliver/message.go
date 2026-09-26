@@ -196,7 +196,7 @@ func leading(report *investigation.Report) Block {
 	if l.Narrowed != "" {
 		fmt.Fprintf(&b, "\n_Scope:_ %s", escape(l.Narrowed))
 	}
-	fmt.Fprintf(&b, "\n_Evidence:_ %s", evidenceIDs(l.Evidence))
+	fmt.Fprintf(&b, "\n_Evidence:_ %s", evidenceIDs(l.Evidence, evidenceURLs(report)))
 	return section(b.String())
 }
 
@@ -238,15 +238,33 @@ func recommendation(report *investigation.Report) Block {
 	return section(fmt.Sprintf("*Recommendation* (%s)\n%s", escape(rec.Status), escape(rec.Action)))
 }
 
-func evidenceIDs(ids []string) string {
+// evidenceIDs renders cited evidence, each ID linked to its source when the
+// report carries a link for it, so a reader can check the evidence itself.
+func evidenceIDs(ids []string, urls map[string]string) string {
 	if len(ids) == 0 {
 		return "none"
 	}
 	quoted := make([]string, 0, len(ids))
 	for _, id := range ids {
+		if u := urls[id]; u != "" {
+			quoted = append(quoted, "<"+escape(u)+"|"+escape(id)+">")
+			continue
+		}
 		quoted = append(quoted, "`"+escape(id)+"`")
 	}
 	return strings.Join(quoted, ", ")
+}
+
+func evidenceURLs(report *investigation.Report) map[string]string {
+	out := map[string]string{}
+	for _, g := range [][]investigation.EvidenceLink{report.Supporting, report.Contradicting, report.InsufficientContext} {
+		for _, l := range g {
+			if l.URL != "" {
+				out[l.Observation] = l.URL
+			}
+		}
+	}
+	return out
 }
 
 func list(items []string) string {

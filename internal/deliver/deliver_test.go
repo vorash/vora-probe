@@ -428,3 +428,19 @@ func TestTheSlackClientChecksTheAnswer(t *testing.T) {
 		t.Fatalf("a 429 must be RateLimited with Retry-After, got %v", err)
 	}
 }
+
+// A cited observation with a link is posted as a link a reader can follow; the
+// URL is escaped, since it carries & between its parameters.
+func TestCitedEvidenceLinksToItsSource(t *testing.T) {
+	report := &investigation.Report{Run: investigation.Run{Status: investigation.RunCompleted},
+		Leading:    &investigation.ClaimReport{Kind: investigation.ClaimMemoryLimitTermination, Allowed: true, Evidence: []string{"OBS-0001", "OBS-0002"}},
+		Supporting: []investigation.EvidenceLink{{Observation: "OBS-0001", URL: "http://p/graph?g0.expr=up&g0.tab=0"}, {Observation: "OBS-0002"}}}
+	r := intake.Record{Incident: investigation.Incident{Service: "memory-test", Environment: "lab"}}
+	body := text(ReportMessage(RouteFor(Channels{Default: "C"}, r, report), r, report))
+	if !strings.Contains(body, "<http://p/graph?g0.expr=up&amp;g0.tab=0|OBS-0001>") {
+		t.Fatalf("the linked evidence is missing or unescaped:\n%s", body)
+	}
+	if !strings.Contains(body, "`OBS-0002`") {
+		t.Fatal("evidence without a link must still be cited")
+	}
+}
