@@ -458,6 +458,7 @@ func copyRecord(r *Record) Record {
 	if r.Forecast != nil {
 		fs := *r.Forecast
 		fs.ClosedAt = copyTime(r.Forecast.ClosedAt)
+		fs.LabeledAt = copyTime(r.Forecast.LabeledAt)
 		c.Forecast = &fs
 	}
 	return c

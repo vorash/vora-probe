@@ -187,6 +187,20 @@ Each target has at most one forecast, and its state is in the incident log:
 
 A restarted server reads open forecasts back from the log and continues them.
 
+Every tick also labels the forecasts whose outcome has become knowable, by
+code, and writes the label to the log once:
+
+- `true_positive`: realized, or an alert for the same target arrived within the
+  horizon (P1 intake's alerts are free labels);
+- `withdrawn`: taken back with no failure, kept apart from false alarms;
+- `missed_after_withdrawal`: withdrawn, then an alert came;
+- `false_alarm`: the horizon passed with no crossing and no alert.
+
+With `serve.watch.shadow`, forecasts are recorded and labelled but not
+investigated or posted. That is the mode for a real deployment before anyone
+should be paged by a forecast, and it builds the labelled history there is
+none of. The labels are visible in `GET /incidents`.
+
 In chat, a forecast lives in one thread. The report is labelled `forecast ·`.
 Each material revision is a reply with the new conditional statement, posted
 once, because the log counts the revisions the thread has heard. A withdrawal
