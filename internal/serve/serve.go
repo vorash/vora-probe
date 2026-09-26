@@ -13,6 +13,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -22,8 +23,9 @@ import (
 )
 
 // Investigator runs one investigation. It is probe.Run or probe.Investigate
-// with their ports bound; the server does not know which.
-type Investigator func(ctx context.Context, incident investigation.Incident) (probe.ReplayResult, error)
+// with their ports bound; the server does not know which. attempt numbers the
+// runs of one incident, so a retried run gets its own journal.
+type Investigator func(ctx context.Context, incident investigation.Incident, attempt int) (probe.ReplayResult, error)
 
 // Limits bound how many investigations one alert group, and one entity (pod or
 // host), may start inside a rolling window. Dedupe stops a single firing from
@@ -48,6 +50,9 @@ type Config struct {
 	// on to the next incident.
 	Timeout time.Duration
 	Now     func() time.Time
+	// Logf reports a state change that could not be recorded. The work still
+	// happens; only its record is behind, and a restart re-derives it.
+	Logf func(format string, args ...any)
 }
 
 // Server holds the queue. Accept is safe to call from HTTP handlers; Run is the
@@ -74,7 +79,56 @@ func New(cfg Config) (*Server, error) {
 	if cfg.Now == nil {
 		cfg.Now = time.Now
 	}
-	return &Server{cfg: cfg, wake: make(chan struct{}, 1), hits: map[string][]time.Time{}}, nil
+	if cfg.Logf == nil {
+		cfg.Logf = func(string, ...any) {}
+	}
+	s := &Server{cfg: cfg, wake: make(chan struct{}, 1), hits: map[string][]time.Time{}}
+	s.recover()
+	return s, nil
+}
+
+// recover rebuilds the queue and the rate-limit windows from intake's records,
+// which a persistent intake has just replayed from its log. Incidents resume in
+// the order they arrived: queued ones as they were, an interrupted one as its
+// next attempt, and one that was recorded but never admitted is admitted now.
+func (s *Server) recover() {
+	now := s.cfg.Now().UTC()
+	for _, r := range s.cfg.Intake.List() {
+		inv := r.Investigation
+		switch inv.State {
+		case intake.InvestigationRateLimited:
+			continue
+		case intake.InvestigationPending:
+			s.admitAndQueue(r, now)
+			continue
+		}
+		s.count(r, r.ReceivedAt)
+		switch inv.State {
+		case intake.InvestigationQueued:
+			s.queue = append(s.queue, r.Incident.ID)
+		case intake.InvestigationRunning:
+			next := intake.Investigation{
+				State:   intake.InvestigationQueued,
+				Attempt: attempt(inv) + 1,
+				Reason:  fmt.Sprintf("attempt %d was interrupted when the server stopped; its journal is kept", attempt(inv)),
+			}
+			s.record(r.Incident.ID, next, investigation.IncidentOpen)
+			s.queue = append(s.queue, r.Incident.ID)
+		}
+	}
+}
+
+func attempt(inv intake.Investigation) int {
+	if inv.Attempt > 0 {
+		return inv.Attempt
+	}
+	return 1
+}
+
+func (s *Server) record(id string, inv intake.Investigation, status investigation.IncidentStatus) {
+	if err := s.cfg.Intake.SetInvestigation(id, inv, status); err != nil {
+		s.cfg.Logf("vora-probe serve: could not record %s as %s: %v", id, inv.State, err)
+	}
 }
 
 // Accept takes intake's decision about one notification. Only an opened
@@ -88,44 +142,42 @@ func (s *Server) Accept(received intake.Received) {
 	if !ok {
 		return
 	}
-	now := s.cfg.Now().UTC()
+	s.admitAndQueue(record, s.cfg.Now().UTC())
+}
 
+// admitAndQueue records the decision before the incident becomes visible to the
+// worker. Recording it after would race a worker that is already looping: it
+// could start the run, and the late "queued" would overwrite "investigating",
+// or even the final state. Lock order is s.mu, then intake's; nothing takes
+// them the other way round.
+func (s *Server) admitAndQueue(record intake.Record, now time.Time) {
 	s.mu.Lock()
 	reason := s.admit(record, now)
-	if reason == "" {
-		s.queue = append(s.queue, record.Incident.ID)
+	if reason != "" {
+		s.record(record.Incident.ID, intake.Investigation{State: intake.InvestigationRateLimited, Reason: reason}, "")
+		s.mu.Unlock()
+		return
 	}
+	s.record(record.Incident.ID, intake.Investigation{State: intake.InvestigationQueued, Attempt: 1}, "")
+	s.queue = append(s.queue, record.Incident.ID)
 	s.mu.Unlock()
-
-	s.cfg.Intake.Update(record.Incident.ID, func(r *intake.Record) {
-		if reason != "" {
-			r.Investigation = intake.Investigation{State: intake.InvestigationRateLimited, Reason: reason}
-			return
-		}
-		r.Investigation = intake.Investigation{State: intake.InvestigationQueued}
-	})
-	if reason == "" {
-		select {
-		case s.wake <- struct{}{}:
-		default:
-		}
+	select {
+	case s.wake <- struct{}{}:
+	default:
 	}
 }
 
 // admit applies the rolling-window limits and, if the incident is admitted,
 // counts it. It returns why it was held back, or "".
 func (s *Server) admit(r intake.Record, now time.Time) string {
-	entity := r.Entity
-	if entity == "" {
-		entity = r.Namespace + "/" + r.Incident.Service
-	}
+	group, entity := s.limitKeys(r)
 	keys := []struct {
 		key   string
 		limit int
 		what  string
 	}{
-		{"group\x00" + r.GroupKey, s.cfg.Limits.PerGroup, "alert group"},
-		{"entity\x00" + entity, s.cfg.Limits.PerEntity, "entity " + entity},
+		{group, s.cfg.Limits.PerGroup, "alert group"},
+		{entity, s.cfg.Limits.PerEntity, "entity " + strings.TrimPrefix(entity, "entity\x00")},
 	}
 	since := now.Add(-s.cfg.Limits.Window)
 	for _, k := range keys {
@@ -144,10 +196,24 @@ func (s *Server) admit(r intake.Record, now time.Time) string {
 			return fmt.Sprintf("rate limited: the %s already started %d investigations in the last %s", k.what, len(kept), s.cfg.Limits.Window)
 		}
 	}
-	for _, k := range keys {
-		s.hits[k.key] = append(s.hits[k.key], now)
-	}
+	s.count(r, now)
 	return ""
+}
+
+// limitKeys are the rolling windows an incident counts against.
+func (s *Server) limitKeys(r intake.Record) (group, entity string) {
+	e := r.Entity
+	if e == "" {
+		e = r.Namespace + "/" + r.Incident.Service
+	}
+	return "group\x00" + r.GroupKey, "entity\x00" + e
+}
+
+// count records that an incident started a run at the given time.
+func (s *Server) count(r intake.Record, at time.Time) {
+	group, entity := s.limitKeys(r)
+	s.hits[group] = append(s.hits[group], at)
+	s.hits[entity] = append(s.hits[entity], at)
 }
 
 // Queued returns the incident IDs waiting, oldest first.
@@ -195,35 +261,32 @@ func (s *Server) investigate(ctx context.Context, id string) {
 		return
 	}
 	started := s.cfg.Now().UTC()
-	s.cfg.Intake.Update(id, func(r *intake.Record) {
-		r.Incident.Status = investigation.IncidentInvestigating
-		r.Investigation = intake.Investigation{State: intake.InvestigationRunning, StartedAt: &started}
-	})
+	n := attempt(record.Investigation)
+	running := intake.Investigation{State: intake.InvestigationRunning, Attempt: n, StartedAt: &started}
+	s.record(id, running, investigation.IncidentInvestigating)
 	incident := record.Incident
 	incident.Status = investigation.IncidentInvestigating
 
 	runCtx, cancel := context.WithTimeout(ctx, s.cfg.Timeout)
-	result, err := s.cfg.Investigate(runCtx, incident)
+	result, err := s.cfg.Investigate(runCtx, incident, n)
 	cancel()
 
 	ended := s.cfg.Now().UTC()
-	s.cfg.Intake.Update(id, func(r *intake.Record) {
-		inv := &r.Investigation
-		inv.EndedAt = &ended
-		inv.Report = result.ReportJSONPath
-		inv.RunStatus = result.Report.Run.Status
-		switch {
-		case err == nil:
-			inv.State = intake.InvestigationConcluded
-			r.Incident.Status = investigation.IncidentComplete
-		case errors.Is(err, probe.ErrNotConcluded):
-			inv.State = intake.InvestigationNotConcluded
-			inv.Reason = err.Error()
-			r.Incident.Status = investigation.IncidentFailed
-		default:
-			inv.State = intake.InvestigationError
-			inv.Reason = err.Error()
-			r.Incident.Status = investigation.IncidentFailed
-		}
-	})
+	done := running
+	done.EndedAt = &ended
+	done.Report = result.ReportJSONPath
+	done.RunStatus = result.Report.Run.Status
+	status := investigation.IncidentFailed
+	switch {
+	case err == nil:
+		done.State = intake.InvestigationConcluded
+		status = investigation.IncidentComplete
+	case errors.Is(err, probe.ErrNotConcluded):
+		done.State = intake.InvestigationNotConcluded
+		done.Reason = err.Error()
+	default:
+		done.State = intake.InvestigationError
+		done.Reason = err.Error()
+	}
+	s.record(id, done, status)
 }

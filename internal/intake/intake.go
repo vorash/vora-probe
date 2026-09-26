@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"os"
 	"slices"
 	"sync"
 	"time"
@@ -89,7 +90,10 @@ const (
 
 // Investigation records one incident's investigation, as the server saw it.
 type Investigation struct {
-	State     InvestigationState      `json:"state,omitempty"`
+	State InvestigationState `json:"state,omitempty"`
+	// Attempt numbers the runs of one incident. A run interrupted by a restart
+	// is retried as the next attempt, so its journal is kept, not overwritten.
+	Attempt   int                     `json:"attempt,omitempty"`
 	Reason    string                  `json:"reason,omitempty"`
 	RunStatus investigation.RunStatus `json:"run_status,omitempty"`
 	Report    string                  `json:"report,omitempty"`
@@ -153,6 +157,9 @@ type Intake struct {
 	heartbeats    int
 	lastHeartbeat time.Time
 	unmapped      []Delivery
+	// log is where changes are written before they are applied; nil keeps
+	// intake in memory only.
+	log *os.File
 }
 
 func New(cfg Config) *Intake {
@@ -168,7 +175,10 @@ func New(cfg Config) *Intake {
 }
 
 // Receive decides what a notification means and records it. raw is the
-// payload as received; it is kept redacted, never as sent.
+// payload as received; it is kept redacted, never as sent. When intake has a
+// log, the change is written before it is applied or acknowledged, so a
+// notification that was answered is never lost: if the write fails, the sender
+// gets an error and retries.
 func (in *Intake) Receive(n Notification, raw []byte) (Received, error) {
 	now := in.cfg.Now().UTC()
 	payload, _ := gateway.RedactRaw(json.RawMessage(raw))
@@ -184,18 +194,19 @@ func (in *Intake) Receive(n Notification, raw []byte) (Received, error) {
 		if !ok {
 			return Received{Outcome: OutcomeIgnored, Reason: "resolved group has no open incident"}, nil
 		}
-		open.Alert = AlertResolved
-		open.ResolvedAt = &now
-		open.UpdatedAt = now
-		open.Notifications = append(open.Notifications, Delivery{At: now, Outcome: OutcomeResolved, Payload: payload})
-		delete(in.openByGroup, n.GroupKey)
+		err := in.commit(change{Kind: changeResolved, At: now, ID: open.Incident.ID,
+			Delivery: &Delivery{At: now, Outcome: OutcomeResolved, Payload: payload}})
+		if err != nil {
+			return Received{}, err
+		}
 		return Received{Outcome: OutcomeResolved, IncidentID: open.Incident.ID}, nil
 	}
 
 	alerts := slices.DeleteFunc(slices.Clone(n.Alerts), func(a Alert) bool { return isHeartbeat(n, a) })
 	if len(alerts) == 0 {
-		in.heartbeats++
-		in.lastHeartbeat = now
+		if err := in.commit(change{Kind: changeHeartbeat, At: now}); err != nil {
+			return Received{}, err
+		}
 		return Received{Outcome: OutcomeHeartbeat, Reason: "heartbeat alerts are recorded, never investigated"}, nil
 	}
 	n.Alerts = alerts
@@ -209,21 +220,26 @@ func (in *Intake) Receive(n Notification, raw []byte) (Received, error) {
 		existing, seen = in.openByGroup[n.GroupKey]
 	}
 	if seen {
-		existing.UpdatedAt = now
-		existing.Notifications = append(existing.Notifications, Delivery{At: now, Outcome: OutcomeDuplicate, Payload: payload})
+		err := in.commit(change{Kind: changeDuplicate, At: now, ID: existing.Incident.ID,
+			Delivery: &Delivery{At: now, Outcome: OutcomeDuplicate, Payload: payload}})
+		if err != nil {
+			return Received{}, err
+		}
 		return Received{Outcome: OutcomeDuplicate, IncidentID: existing.Incident.ID}, nil
 	}
 
 	record, err := in.normalize(n, fp, now)
 	if err != nil {
-		in.unmapped = append(in.unmapped, Delivery{At: now, Outcome: OutcomeUnmapped, Payload: payload})
+		if err := in.commit(change{Kind: changeUnmapped, At: now,
+			Delivery: &Delivery{At: now, Outcome: OutcomeUnmapped, Payload: payload}}); err != nil {
+			return Received{}, err
+		}
 		return Received{Outcome: OutcomeUnmapped, Reason: err.Error()}, nil
 	}
 	record.Notifications = []Delivery{{At: now, Outcome: OutcomeOpened, Payload: payload}}
-	in.records = append(in.records, record)
-	in.byID[record.Incident.ID] = record
-	in.byFingerprint[fp] = record
-	in.openByGroup[n.GroupKey] = record
+	if err := in.commit(change{Kind: changeOpened, At: now, ID: record.Incident.ID, Record: record}); err != nil {
+		return Received{}, err
+	}
 	return Received{Outcome: OutcomeOpened, IncidentID: record.Incident.ID}, nil
 }
 
@@ -348,17 +364,16 @@ func (in *Intake) normalize(n Notification, fp string, now time.Time) (*Record, 
 
 const maxSymptomBytes = 512
 
-// Update changes one incident under intake's lock. It is how the server records
-// what became of an incident, so every state change goes through one place.
-func (in *Intake) Update(id string, change func(*Record)) bool {
+// SetInvestigation records what became of an incident's investigation, and the
+// incident status that follows from it when status is set. It is the one way
+// the server changes a record, so every such change is in the log.
+func (in *Intake) SetInvestigation(id string, inv Investigation, status investigation.IncidentStatus) error {
 	in.mu.Lock()
 	defer in.mu.Unlock()
-	r, ok := in.byID[id]
-	if !ok {
-		return false
+	if _, ok := in.byID[id]; !ok {
+		return fmt.Errorf("no incident %s", id)
 	}
-	change(r)
-	return true
+	return in.commit(change{Kind: changeInvestigation, At: in.cfg.Now().UTC(), ID: id, Investigation: &inv, Status: status})
 }
 
 // Get returns a copy of one incident.
