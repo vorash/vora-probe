@@ -366,6 +366,20 @@ the decoded payload, so a secret at the end of a line (`password=x"`) is removed
 without breaking the JSON around it. A lab without a log source answers
 `unavailable`, which becomes a coverage gap rather than a refusal.
 
+With `lab.loki_url` set, the live adapter asks Loki two bounded questions for
+the entity's pods in the configured namespace (the Prometheus mapping's
+selector), with the filter's fixed matcher:
+
+- the exact count over the window, from `sum(count_over_time(…))` on the
+  instant endpoint;
+- the first 200 lines, oldest first, from `query_range`, merged across streams
+  by time.
+
+When there are more matches than lines kept, the answer is `partial` and
+`truncated`, so it becomes a coverage gap and is never read as the whole of the
+logs. Policy runs before any request, so a filter outside the closed set never
+reaches Loki.
+
 ## Policy layers
 
 Three independent checks, so withdrawing a permission never requires trusting a
