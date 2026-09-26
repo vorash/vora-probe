@@ -378,7 +378,7 @@ func Investigate(ctx context.Context, opts LiveOptions) (LiveResult, error) {
 	if worker != nil {
 		live.SandboxID = worker.SandboxID()
 	}
-	if err != nil {
+	if err != nil && !errors.Is(err, ErrNotConcluded) {
 		return live, err
 	}
 	live.ReplayResult = ReplayResult{
@@ -390,7 +390,7 @@ func Investigate(ctx context.Context, opts LiveOptions) (LiveResult, error) {
 		InfraCalls:         gw.Executed(),
 		Steps:              res.steps,
 	}
-	return live, nil
+	return live, err
 }
 
 // wallClock is a live run's time source. Replay freezes time so two replays are

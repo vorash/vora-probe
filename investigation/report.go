@@ -94,6 +94,9 @@ type Recommendation struct {
 func BuildReport(env *StepEnvelope, policy ClaimPolicy, now time.Time) (Report, error) {
 	byID := evidenceIndex(env.Observations)
 	facts := BuildFacts(env.Incident.Service, env.Observations)
+	if env.Run.Status != RunCompleted {
+		return notConcluded(env, facts, byID), nil
+	}
 
 	candidates := make([]claimCandidate, 0, len(env.Hypotheses))
 	for _, h := range env.Hypotheses {
@@ -517,6 +520,11 @@ func unresolved(env *StepEnvelope, leading *ClaimVerdict, facts Facts) []string 
 	if leading.Overclaim {
 		out = append(out, "an overclaiming assertion was refused: "+strings.Join(leading.Reasons, "; "))
 	}
+	return dedupe(append(out, missingEvidence(facts)...))
+}
+
+func missingEvidence(facts Facts) []string {
+	var out []string
 	for _, g := range facts.Gaps {
 		out = append(out, "missing evidence: "+g.String())
 	}
@@ -526,7 +534,47 @@ func unresolved(env *StepEnvelope, leading *ClaimVerdict, facts Facts) []string 
 	if _, ok := facts.LatestRollout(); !ok && len(facts.Rollouts) == 0 {
 		out = append(out, "no rollout evidence was collected for this service in the window")
 	}
-	return dedupe(out)
+	return out
+}
+
+// notConcluded is the report of a run that stopped before it concluded: failed,
+// or out of budget. It is built by code from the state alone, so a stalled
+// planner or a lost model still leaves a readable record.
+//
+// It records what was gathered and states no finding. The claims are not
+// evaluated at all: a verdict on partial evidence reads as a conclusion
+// whatever it is labelled, and "admissible so far" is exactly the kind of
+// statement this repository exists to refuse. Every hypothesis still shows the
+// evidence labelled against it.
+func notConcluded(env *StepEnvelope, facts Facts, byID map[string]Observation) Report {
+	report := Report{
+		SchemaVersion: gateway.SchemaVersion,
+		Incident:      env.Incident,
+		Run:           env.Run,
+		Timeline:      buildTimeline(env, byID),
+		Claims:        []ClaimReport{},
+		Hypotheses:    hypothesisReports(env.Hypotheses, env.Relations, byID),
+		Relations:     env.Relations,
+		Decisions:     env.Decisions,
+		Trace:         env.Trace,
+		CoverageGaps:  facts.Gaps,
+		Derived:       DeriveObservations(facts, byID),
+		Impact:        impactSummary(facts),
+	}
+	report.Arm, report.ArmVersion = armOf(env)
+	report.EvaluatorCalls = env.EvaluatorCalls
+	stopped := fmt.Sprintf("the investigation did not conclude: it ended as %s (%s)", env.Run.Status, env.Run.Reason)
+	report.Summary = fmt.Sprintf("%s reported: %s\nNot concluded. The run ended as %s: %s. No finding is drawn from partial evidence.\n",
+		env.Incident.Environment, env.Incident.Symptom, env.Run.Status, env.Run.Reason)
+	report.Unresolved = dedupe(append([]string{stopped}, missingEvidence(facts)...))
+	return report
+}
+
+// Concluded reports whether the run reached a conclusion. A report that did not
+// carries no leading claim and no recommendation, and must not be read as a
+// finding.
+func (r Report) Concluded() bool {
+	return r.Run.Status == RunCompleted
 }
 
 func allObservationIDs(obs []Observation) []string {

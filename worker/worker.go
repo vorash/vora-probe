@@ -52,11 +52,15 @@ func Step(engine *investigation.Engine, input []byte, maxEnvelopeBytes, maxRespo
 	// run's output artifact and is bound by the response budget, not by the one
 	// that keeps the worker's own state small; conflating them would make a
 	// detailed report fail the step protocol.
+	//
+	// A final envelope is never state again: nothing feeds it back to a worker.
+	// It is bound by the whole-result limit below, like the report, so a run that
+	// ended because its state outgrew the budget can still say so.
 	resultState, err := json.Marshal(result.Envelope)
 	if err != nil {
 		return nil, err
 	}
-	if int64(len(resultState)) > maxEnvelopeBytes {
+	if result.Kind != investigation.ResultFinal && int64(len(resultState)) > maxEnvelopeBytes {
 		return nil, fmt.Errorf("step result state of %d bytes exceeds the %d byte limit", len(resultState), maxEnvelopeBytes)
 	}
 	raw, err := json.Marshal(result)

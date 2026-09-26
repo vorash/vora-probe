@@ -136,7 +136,7 @@ func (e *Engine) Step(input WorkerInput) (StepResult, error) {
 		}
 		s.env.Run.Used.InfraCalls++
 		if err := e.fit(&s.env); err != nil {
-			return e.finish(s, RunFailed, err.Error())
+			return e.finish(s, RunBudgetExhausted, err.Error())
 		}
 		result := s.result(ResultInfraRequest, "requesting "+action.String())
 		result.InfraRequest = action
@@ -152,7 +152,7 @@ func (e *Engine) Step(input WorkerInput) (StepResult, error) {
 	s.env.Note = ""
 	s.env.Run.Used.ModelCalls++
 	if err := e.fit(&s.env); err != nil {
-		return e.finish(s, RunFailed, err.Error())
+		return e.finish(s, RunBudgetExhausted, err.Error())
 	}
 	reason := describePhase(phase, consumed)
 	if note != "" {
@@ -340,11 +340,19 @@ func (e *Engine) exhausted(env *StepEnvelope, now time.Time) string {
 	return ""
 }
 
+// controllerReserveBytes is room left in the state for what the controller
+// appends after a step and before the next one: the call record for the request
+// it just executed. Without it a state fitted to the byte would come back one
+// record too large, and the worker would refuse its own next input.
+const controllerReserveBytes = 2 << 10
+
 // fit keeps the worker state inside its byte budget. A payload that does not fit
 // is dropped and the observation is marked truncated, so oversize input shows up
-// as a coverage limitation rather than as evidence.
+// as a coverage limitation rather than as evidence. When dropping payloads is
+// not enough, the state budget is exhausted like any other budget, and the run
+// ends with a report that says so.
 func (e *Engine) fit(env *StepEnvelope) error {
-	max := env.Run.Budgets.MaxEnvelopeBytes
+	max := env.Run.Budgets.MaxEnvelopeBytes - controllerReserveBytes
 	for {
 		raw, err := json.Marshal(*env)
 		if err != nil {
@@ -360,7 +368,8 @@ func (e *Engine) fit(env *StepEnvelope) error {
 			}
 		}
 		if idx < 0 {
-			return fmt.Errorf("worker state of %d bytes exceeds the %d byte budget with no payload left to drop", len(raw), max)
+			return fmt.Errorf("worker state budget exhausted: %d bytes with no payload left to drop, over the %d byte budget less %d reserved for the controller",
+				len(raw), env.Run.Budgets.MaxEnvelopeBytes, controllerReserveBytes)
 		}
 		env.Observations[idx].Payload = nil
 		env.Observations[idx].Completeness = Truncated
@@ -413,14 +422,25 @@ func (e *Engine) decide(s *state, outcome Outcome, reason, hypothesis string) De
 	return d
 }
 
-// finish closes the run without a report. A run that ends this way is never
-// presented as a completed investigation.
+// finish closes a run that did not conclude. It still publishes a report, built
+// by code from the state, because a run that stops is exactly the one an
+// operator has to read; the report states no finding, so it is never presented
+// as a completed investigation.
 func (e *Engine) finish(s *state, status RunStatus, reason string) (StepResult, error) {
 	ended := e.now()
 	s.env.Run.Status = status
 	s.env.Run.Reason = reason
 	s.env.Run.EndedAt = &ended
-	return s.result(ResultFinal, reason), nil
+	report, err := BuildReport(&s.env, e.Claims, ended)
+	if err != nil {
+		return StepResult{}, err
+	}
+	if err := report.Validate(evidenceIndex(s.env.Observations), hypothesisIndex(s.env.Hypotheses)); err != nil {
+		return StepResult{}, err
+	}
+	result := s.result(ResultFinal, reason)
+	result.Report = &report
+	return result, nil
 }
 
 func (e *Engine) finalReport(s *state, now time.Time) (StepResult, error) {
