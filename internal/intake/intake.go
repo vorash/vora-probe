@@ -85,7 +85,10 @@ type Post struct {
 	TS           string     `json:"ts,omitempty"`
 	PostedAt     *time.Time `json:"posted_at,omitempty"`
 	ResolutionTS string     `json:"resolution_ts,omitempty"`
-	Attempts     int        `json:"attempts,omitempty"`
+	// RevisionsPosted is how many of a forecast's revisions the thread has
+	// heard about, so a revision is posted once whatever triggers it.
+	RevisionsPosted int `json:"revisions_posted,omitempty"`
+	Attempts        int `json:"attempts,omitempty"`
 	// Error is the last failure. Delivery failing never fails the
 	// investigation: the report is already on disk.
 	Error string `json:"error,omitempty"`

@@ -199,9 +199,10 @@ func serveCommand(args []string) error {
 			// A forecast incident goes through the same queue, limits and
 			// delivery as an alert; its withdrawal or realization reaches
 			// the thread the way a resolution does.
-			OnOpened: server.Accept,
-			OnClosed: hook(deliverer, (*deliver.Deliverer).Resolved),
-			Logf:     logf,
+			OnOpened:  server.Accept,
+			OnRevised: hook(deliverer, (*deliver.Deliverer).Revised),
+			OnClosed:  hook(deliverer, (*deliver.Deliverer).Resolved),
+			Logf:      logf,
 		})
 		if err != nil {
 			return err

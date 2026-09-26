@@ -36,6 +36,7 @@ type jobKind int
 const (
 	postReport jobKind = iota
 	postResolution
+	postRevision
 )
 
 type job struct {
@@ -87,6 +88,9 @@ func (d *Deliverer) recover() {
 			d.jobs = append(d.jobs, job{postReport, r.Incident.ID})
 		case r.Alert == intake.AlertResolved && r.Post != nil && r.Post.TS != "" && r.Post.ResolutionTS == "":
 			d.jobs = append(d.jobs, job{postResolution, r.Incident.ID})
+		case r.Forecast != nil && r.Forecast.Closed == "" && r.Post != nil && r.Post.TS != "" &&
+			r.Forecast.Revisions > r.Post.RevisionsPosted:
+			d.jobs = append(d.jobs, job{postRevision, r.Incident.ID})
 		}
 	}
 }
@@ -103,8 +107,12 @@ func finished(r intake.Record) bool {
 // outcome is recorded, so the report is already on disk.
 func (d *Deliverer) Finished(id string) { d.enqueue(job{postReport, id}) }
 
-// Resolved queues the thread reply for an incident whose alert resolved.
+// Resolved queues the thread reply for an incident whose alert resolved, or
+// whose forecast was withdrawn or realized.
 func (d *Deliverer) Resolved(id string) { d.enqueue(job{postResolution, id}) }
+
+// Revised queues the thread reply for a forecast whose ETA moved.
+func (d *Deliverer) Revised(id string) { d.enqueue(job{postRevision, id}) }
 
 // enqueue adds a job unless the same one is already waiting. Two triggers for
 // one incident (a restart's recovery and a late Finished, say) would otherwise
@@ -155,6 +163,8 @@ func (d *Deliverer) Run(ctx context.Context) error {
 			d.deliverReport(ctx, next.id)
 		case postResolution:
 			d.deliverResolution(ctx, next.id)
+		case postRevision:
+			d.deliverRevision(ctx, next.id)
 		}
 		if err := ctx.Err(); err != nil {
 			return err
@@ -192,6 +202,29 @@ func (d *Deliverer) deliverReport(ctx context.Context, id string) {
 		// repeat it.
 		post.ResolutionTS = ts
 	}
+	if r.Forecast != nil {
+		// The post carries the latest forecast, so earlier revisions need no
+		// reply of their own.
+		post.RevisionsPosted = r.Forecast.Revisions
+	}
+	d.record(id, post)
+}
+
+func (d *Deliverer) deliverRevision(ctx context.Context, id string) {
+	r, ok := d.cfg.Intake.Get(id)
+	if !ok || r.Forecast == nil || r.Forecast.Closed != "" || r.Post == nil || r.Post.TS == "" ||
+		r.Forecast.Revisions <= r.Post.RevisionsPosted {
+		// Not posted yet (the post will carry the latest forecast), already
+		// closed (the closure supersedes it), or already told.
+		return
+	}
+	post := *r.Post
+	if _, err := d.post(ctx, RevisionMessage(r), &post); err != nil {
+		post.Error = err.Error()
+		d.record(id, post)
+		return
+	}
+	post.RevisionsPosted, post.Error = r.Forecast.Revisions, ""
 	d.record(id, post)
 }
 
