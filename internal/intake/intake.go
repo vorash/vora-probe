@@ -75,6 +75,8 @@ type Record struct {
 	// what makes delivery idempotent: a retry that finds it does not post
 	// again, and resolutions go into its thread.
 	Post *Post `json:"post,omitempty"`
+	// Forecast is set on an incident a forecast opened (trigger "forecast").
+	Forecast *ForecastState `json:"forecast,omitempty"`
 }
 
 // Post records one incident's outbound message.
@@ -449,6 +451,11 @@ func copyRecord(r *Record) Record {
 		post := *r.Post
 		post.PostedAt = copyTime(r.Post.PostedAt)
 		c.Post = &post
+	}
+	if r.Forecast != nil {
+		fs := *r.Forecast
+		fs.ClosedAt = copyTime(r.Forecast.ClosedAt)
+		c.Forecast = &fs
 	}
 	return c
 }
