@@ -34,9 +34,9 @@ func TestForecastsAreLabelledByWhatHappened(t *testing.T) {
 		want     string
 	}{
 		{"realized", forecastRecord(intake.ForecastRealized), nil, t0.Add(time.Hour), LabelTruePositive},
-		{"an alert for the target within the horizon", forecastRecord(""), []intake.Record{alertAt("memory-test", 90 * time.Minute)}, t0.Add(100 * time.Minute), LabelTruePositive},
-		{"an alert for another service", forecastRecord(""), []intake.Record{alertAt("checkout-api", 30 * time.Minute)}, after, LabelFalseAlarm},
-		{"an alert after the horizon", forecastRecord(""), []intake.Record{alertAt("memory-test", 3 * time.Hour)}, after, LabelFalseAlarm},
+		{"an alert for the target within the horizon", forecastRecord(""), []intake.Record{alertAt("memory-test", 90*time.Minute)}, t0.Add(100 * time.Minute), LabelTruePositive},
+		{"an alert for another service", forecastRecord(""), []intake.Record{alertAt("checkout-api", 30*time.Minute)}, after, LabelFalseAlarm},
+		{"an alert after the horizon", forecastRecord(""), []intake.Record{alertAt("memory-test", 3*time.Hour)}, after, LabelFalseAlarm},
 		{"open past the horizon, nothing happened", forecastRecord(""), nil, after, LabelFalseAlarm},
 		{"withdrawn, nothing happened", forecastRecord(intake.ForecastWithdrawn), nil, after, LabelWithdrawn},
 		{"withdrawn, then it failed", forecastRecord(intake.ForecastWithdrawn), []intake.Record{alertAt("memory-test", time.Hour)}, t0.Add(70 * time.Minute), LabelMissedAfterWithdrawal},
