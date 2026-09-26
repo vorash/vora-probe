@@ -90,6 +90,40 @@ The released worker image is distroless and has no shell on purpose. Vora's gVis
 backend starts every sandbox with `/bin/sh -c 'sleep 86400'`, which such an image
 cannot satisfy, so a distroless worker must run on the `bwrap` backend.
 
+## Alert intake
+
+`internal/intake` turns Alertmanager webhook notifications (payload version 4)
+into incidents. It decides what a notification means and never starts model
+work, so the receiver answers `202` at once; a receiver that blocked would make
+Alertmanager time out and retry, and a retry is a duplicate.
+
+Every notification gets an outcome, including those that start nothing:
+
+| Outcome | When |
+| --- | --- |
+| `opened` | firing, new: an `alert`-triggered incident, to be investigated |
+| `duplicate` | same dedupe key, or its group is already open: appended, nothing started |
+| `heartbeat` | only `Watchdog` / `severity=heartbeat` alerts: counted, never investigated |
+| `resolved` | the group's open incident is closed |
+| `ignored` | resolved, with no open incident for the group |
+| `unmapped` | firing, but no configured label names a service: recorded, not guessed |
+
+Resolution is decided **before** dedupe. The dedupe key is
+`sha256(groupKey | status | first startsAt, or last endsAt when resolved)`, so a
+resolution never matches its firing key; deduping first would open an incident
+for an alert that has already stopped.
+
+The incident is built from the group's earliest alert. Its symptom is the
+alert's summary, redacted and bounded like any untrusted text, and its window
+opens 30 minutes before the alert's start and is capped at `gateway.MaxWindow`.
+Namespace and entity (pod or instance) stay on the intake record rather than in
+the `probe/v1` incident.
+
+Routes: `POST /webhook/alertmanager`, and read-only `GET /incidents` and
+`GET /incidents/{id}`. All need the bearer token, compared in constant time.
+`GET /healthz` is open. An empty token refuses to start. A payload that cannot
+be acted on gets a `4xx`, which Alertmanager does not retry.
+
 ## Determinism
 
 Replay is byte-identical across runs, which is what makes a saved report worth

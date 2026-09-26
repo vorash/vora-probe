@@ -1,0 +1,23 @@
+{
+  "version": "4",
+  "groupKey": "{}:{alertname=\"ContainerOOMKilled\", namespace=\"probe-lab\"}",
+  "truncatedAlerts": 0,
+  "status": "firing",
+  "receiver": "vora-probe",
+  "groupLabels": {"alertname": "ContainerOOMKilled", "namespace": "probe-lab"},
+  "commonLabels": {"alertname": "ContainerOOMKilled", "namespace": "probe-lab", "severity": "warning", "service": "memory-test"},
+  "commonAnnotations": {"summary": "memory-test was OOMKilled"},
+  "externalURL": "http://alertmanager.probe-lab.svc:9093",
+  "notification_reason": "new_alerts",
+  "alerts": [
+    {
+      "status": "firing",
+      "labels": {"alertname": "ContainerOOMKilled", "namespace": "probe-lab", "severity": "warning", "service": "memory-test", "pod": "memory-test-7499b54f69-25kvp", "container": "memory-test"},
+      "annotations": {"summary": "memory-test was OOMKilled"},
+      "startsAt": "2026-09-18T19:56:18Z",
+      "endsAt": "0001-01-01T00:00:00Z",
+      "generatorURL": "http://prometheus.probe-lab.svc:9090/graph?g0.expr=kube_pod_container_status_last_terminated_reason",
+      "fingerprint": "a1b2c3d4e5f60718"
+    }
+  ]
+}
