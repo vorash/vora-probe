@@ -34,6 +34,7 @@ const (
 	changeForecastOpened  changeKind = "forecast_opened"
 	changeForecastRevised changeKind = "forecast_revised"
 	changeForecastClosed  changeKind = "forecast_closed"
+	changeForecastLabeled changeKind = "forecast_labeled"
 )
 
 // change is one line of the log.
@@ -154,6 +155,16 @@ func (in *Intake) apply(c change) error {
 		if in.openByGroup[r.GroupKey] == r {
 			delete(in.openByGroup, r.GroupKey)
 		}
+	case changeForecastLabeled:
+		r, err := record()
+		if err != nil {
+			return err
+		}
+		if r.Forecast == nil {
+			return fmt.Errorf("forecast label for %s, which is not a forecast", c.ID)
+		}
+		at := c.At
+		r.Forecast.Label, r.Forecast.LabeledAt = c.Reason, &at
 	default:
 		return fmt.Errorf("unknown change kind %q", c.Kind)
 	}

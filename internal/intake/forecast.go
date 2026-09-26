@@ -28,6 +28,10 @@ type ForecastState struct {
 	Closed   string     `json:"closed,omitempty"`
 	ClosedAt *time.Time `json:"closed_at,omitempty"`
 	Reason   string     `json:"reason,omitempty"`
+	// Label is the forecast's outcome, set by code once it is knowable. It is
+	// what turns watching into labelled history.
+	Label     string     `json:"label,omitempty"`
+	LabeledAt *time.Time `json:"labeled_at,omitempty"`
 }
 
 const (
@@ -126,4 +130,18 @@ func (in *Intake) OpenForecasts() []Record {
 		}
 	}
 	return out
+}
+
+// LabelForecast records a forecast's outcome. A forecast is labelled once.
+func (in *Intake) LabelForecast(id, label string) error {
+	in.mu.Lock()
+	defer in.mu.Unlock()
+	r, ok := in.byID[id]
+	if !ok || r.Forecast == nil {
+		return fmt.Errorf("no forecast incident %s", id)
+	}
+	if r.Forecast.Label != "" {
+		return nil
+	}
+	return in.commit(change{Kind: changeForecastLabeled, At: in.cfg.Now().UTC(), ID: id, Reason: label})
 }

@@ -128,6 +128,7 @@ func (w *Watcher) Tick(ctx context.Context) error {
 			errs = append(errs, fmt.Errorf("%s: %w", target, err))
 		}
 	}
+	w.label(w.cfg.Now().UTC())
 	return errors.Join(errs...)
 }
 

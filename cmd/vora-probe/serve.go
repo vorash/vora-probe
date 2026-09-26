@@ -50,6 +50,10 @@ type serveConfig struct {
 			Every             string   `json:"every"`
 			Window            string   `json:"window"`
 			MaxQueriesPerTick int      `json:"max_queries_per_tick"`
+			// Shadow records and labels forecasts without investigating or
+			// posting them, so a real deployment accumulates labelled history
+			// before anyone is paged by a forecast.
+			Shadow bool `json:"shadow"`
 		} `json:"watch"`
 		// Slack, when set, posts every finished incident's report. Without it
 		// reports stay on disk and in GET /incidents only.
@@ -187,6 +191,12 @@ func serveCommand(args []string) error {
 		if budget == 0 {
 			budget = 20
 		}
+		onOpened := server.Accept
+		onRevised := hook(deliverer, (*deliver.Deliverer).Revised)
+		onClosed := hook(deliverer, (*deliver.Deliverer).Resolved)
+		if wc.Shadow {
+			onOpened, onRevised, onClosed = nil, nil, nil
+		}
 		watcher, err = watch.New(watch.Config{
 			Intake:            in,
 			Gateway:           func() (gateway.Gateway, error) { return cfg.labGateway() },
@@ -199,9 +209,9 @@ func serveCommand(args []string) error {
 			// A forecast incident goes through the same queue, limits and
 			// delivery as an alert; its withdrawal or realization reaches
 			// the thread the way a resolution does.
-			OnOpened:  server.Accept,
-			OnRevised: hook(deliverer, (*deliver.Deliverer).Revised),
-			OnClosed:  hook(deliverer, (*deliver.Deliverer).Resolved),
+			OnOpened:  onOpened,
+			OnRevised: onRevised,
+			OnClosed:  onClosed,
 			Logf:      logf,
 		})
 		if err != nil {
@@ -246,6 +256,9 @@ func serveCommand(args []string) error {
 	watchingNote := "off"
 	if watcher != nil {
 		watchingNote = strings.Join(cfg.Serve.Watch.Targets, ", ")
+		if cfg.Serve.Watch.Shadow {
+			watchingNote += " (shadow: recorded and labelled, not investigated or posted)"
+		}
 	}
 	fmt.Printf("vora-probe serve: listening on %s, worker %s, reports in %s, delivery %s, watching %s\n", listen, mode, outDir, posting, watchingNote)
 
