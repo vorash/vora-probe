@@ -47,8 +47,11 @@ type investigateConfig struct {
 		// differ from the URL the controller queries. When set, reports link
 		// each metric observation to its exact query and window.
 		PrometheusUIURL string `json:"prometheus_ui_url"`
-		Namespace       string `json:"namespace"`
-		Kubernetes      struct {
+		// LokiURL is the log source for logs.query; without it logs are a
+		// coverage gap.
+		LokiURL    string `json:"loki_url"`
+		Namespace  string `json:"namespace"`
+		Kubernetes struct {
 			Server    string `json:"server"`
 			TokenFile string `json:"token_file"`
 			CAFile    string `json:"ca_file"`
@@ -247,6 +250,7 @@ func (c investigateConfig) budget() investigation.Budgets {
 func (c investigateConfig) labGateway() (*live.Gateway, error) {
 	return live.New(live.Config{
 		PrometheusURL: c.Lab.PrometheusURL,
+		LokiURL:       c.Lab.LokiURL,
 		Namespace:     c.Lab.Namespace,
 		Kubernetes: live.KubernetesConfig{
 			Server: c.Lab.Kubernetes.Server,

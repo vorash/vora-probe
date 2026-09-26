@@ -40,7 +40,10 @@ type KubernetesConfig struct {
 
 type Config struct {
 	PrometheusURL string
-	Kubernetes    KubernetesConfig
+	// LokiURL is the log source. Empty means the lab has none, and a logs
+	// request is answered as unavailable.
+	LokiURL    string
+	Kubernetes KubernetesConfig
 	// Namespace scopes every object request. The lab is one namespace, and the
 	// gateway never widens that.
 	Namespace string
@@ -126,10 +129,7 @@ func (g *Gateway) Execute(a gateway.Action) (gateway.Response, error) {
 	case gateway.ActionKubernetesDeployments:
 		resp, err = g.deployments(a)
 	case gateway.ActionLogsQuery:
-		// Without a log source the answer is a visible coverage gap. Denying
-		// would end the run over evidence that is merely not collected here.
-		resp, err = g.response(a, gateway.QueryMeta{Datasource: "loki"}, nil, gateway.StatusUnavailable, gateway.Unavailable,
-			"no log source is configured for this lab")
+		resp, err = g.logs(a)
 	default:
 		return gateway.Response{}, &gateway.Denied{Reason: fmt.Sprintf("action %q has no live adapter", a.Kind)}
 	}
