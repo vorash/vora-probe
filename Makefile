@@ -13,7 +13,7 @@ PLATFORMS := linux/amd64 linux/arm64
 
 .PHONY: help
 help:
-	@echo "make check          format check, vet and tests (offline)"
+	@echo "make check          format check, vet and tests (offline), including the lab workload"
 	@echo "make test           tests only"
 	@echo "make build          build both binaries into bin/"
 	@echo "make release        cross-compile release archives into dist/"
@@ -22,7 +22,7 @@ help:
 	@echo "make evaluate       compare evaluators (model arms report as blocked without endpoints)"
 
 .PHONY: check
-check: fmt-check vet test
+check: fmt-check vet test lab-test
 
 .PHONY: fmt-check
 fmt-check:
@@ -36,6 +36,11 @@ vet:
 .PHONY: test
 test:
 	$(GO) test ./...
+
+# The lab workload is its own module, so ./... from the root does not reach it.
+.PHONY: lab-test
+lab-test:
+	cd deploy/lab/memory-test && $(GO) vet ./... && $(GO) test ./...
 
 .PHONY: build
 build:
