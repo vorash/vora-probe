@@ -37,7 +37,13 @@ func RouteFor(ch Channels, r intake.Record, report *investigation.Report) Route 
 	if strings.EqualFold(r.Severity, "critical") && ch.Critical != "" {
 		channel = ch.Critical
 	}
-	return Route{Channel: channel, Label: label(r, report)}
+	l := label(r, report)
+	if r.Forecast != nil {
+		// A forecast is about the future; the label says so before anyone
+		// reads it as something that happened.
+		l = "forecast · " + l
+	}
+	return Route{Channel: channel, Label: l}
 }
 
 func label(r intake.Record, report *investigation.Report) string {
@@ -127,7 +133,13 @@ func ReportMessage(route Route, r intake.Record, report *investigation.Report) M
 			blocks = append(blocks, section("*Missing evidence*\n"+gaps))
 		}
 	}
-	if r.Alert == intake.AlertResolved && r.ResolvedAt != nil {
+	if r.Forecast != nil && r.Forecast.Revisions > 0 && r.Forecast.Closed == "" {
+		blocks = append(blocks, section("*Latest forecast*\n"+escape(r.Forecast.Current.Statement())))
+	}
+	switch {
+	case r.Forecast != nil && r.Forecast.Closed != "":
+		blocks = append(blocks, contextBlock(escape(closure(r))))
+	case r.Alert == intake.AlertResolved && r.ResolvedAt != nil:
 		blocks = append(blocks, contextBlock("The alert has since resolved ("+r.ResolvedAt.UTC().Format("2006-01-02 15:04:05Z")+")."))
 	}
 	if r.Investigation.Report != "" {
@@ -142,6 +154,10 @@ func ReportMessage(route Route, r intake.Record, report *investigation.Report) M
 // ResolutionMessage is the thread reply for an alert that resolved after its
 // report was posted.
 func ResolutionMessage(r intake.Record) Message {
+	if r.Forecast != nil {
+		text := fmt.Sprintf("[%s] %s", escape(r.Incident.Environment), escape(closure(r)))
+		return Message{Channel: r.Post.Channel, ThreadTS: r.Post.TS, Text: text}
+	}
 	at := ""
 	if r.ResolvedAt != nil {
 		at = " at " + r.ResolvedAt.UTC().Format("2006-01-02 15:04:05Z")
@@ -149,6 +165,28 @@ func ResolutionMessage(r intake.Record) Message {
 	text := fmt.Sprintf("[%s] The alert for %s resolved%s. The report above is unchanged: a resolution is not evidence of the cause.",
 		escape(r.Incident.Environment), escape(r.Incident.Service), at)
 	return Message{Channel: r.Post.Channel, ThreadTS: r.Post.TS, Text: text}
+}
+
+// RevisionMessage is the thread reply for a forecast whose ETA moved.
+func RevisionMessage(r intake.Record) Message {
+	text := fmt.Sprintf("[%s] Forecast for %s revised: %s.", escape(r.Incident.Environment), escape(r.Incident.Service),
+		escape(r.Forecast.Current.Statement()))
+	return Message{Channel: r.Post.Channel, ThreadTS: r.Post.TS, Text: text}
+}
+
+// closure says how a forecast ended. A withdrawal is not an apology and a
+// realization is not a finding: each is what the series did.
+func closure(r intake.Record) string {
+	at := ""
+	if r.Forecast.ClosedAt != nil {
+		at = " at " + r.Forecast.ClosedAt.UTC().Format("2006-01-02 15:04:05Z")
+	}
+	switch r.Forecast.Closed {
+	case intake.ForecastRealized:
+		return fmt.Sprintf("Forecast for %s realized%s: the working set reached its limit.", r.Incident.Service, at)
+	default:
+		return fmt.Sprintf("Forecast for %s withdrawn%s: %s. The limit was not reached.", r.Incident.Service, at, r.Forecast.Reason)
+	}
 }
 
 func leading(report *investigation.Report) Block {

@@ -187,6 +187,14 @@ Each target has at most one forecast, and its state is in the incident log:
 
 A restarted server reads open forecasts back from the log and continues them.
 
+In chat, a forecast lives in one thread. The report is labelled `forecast ·`.
+Each material revision is a reply with the new conditional statement, posted
+once, because the log counts the revisions the thread has heard. A withdrawal
+(with its reason) or a realization is the last reply, in its own words, never
+"the alert resolved". A revision that arrives after the forecast ended is
+dropped, because the end supersedes it. A report posted late carries the latest
+forecast and how it ended.
+
 ### Delivery
 
 With a `serve.slack` block, every finished incident is posted by
