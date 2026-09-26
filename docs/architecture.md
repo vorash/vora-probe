@@ -385,7 +385,13 @@ Ground truth never enters the planner or the evaluator. It lives in
   records `sandbox` created/destroyed events, which correlate the run with the
   sandbox it ran in.
 - `report.json`, `report.md` — the report in machine and human form, written
-  for every run, including one that did not conclude.
+  for every run, including one that did not conclude. When the config names
+  `lab.prometheus_ui_url`, each metric observation in the report links to the
+  Prometheus graph of its exact query, window and resolution. The controller
+  builds these links after the report, from what the observation recorded
+  (`gateway.PrometheusGraphURL`), never from model text. Kubernetes evidence
+  has no graph and gets no link. Replays carry no links and stay byte-identical.
+  Slack posts link cited evidence IDs the same way.
 - One investigation at a time, enforced by a `flock` on `<out>/probe.lock`, which
   the kernel releases even if the process dies.
 - Artifacts are owner-readable (`0600`), live artifacts are git-ignored, and the

@@ -212,6 +212,9 @@ type runConfig struct {
 	// and run_finished — the same bracket replay has always had.
 	onCreate  func(ctx context.Context) (StepRunner, error)
 	onDestroy func(ctx context.Context)
+	// evidenceURL is where a human opens Prometheus evidence. When set, the
+	// report's evidence links carry a link to the exact query and window.
+	evidenceURL string
 }
 
 type loopResult struct {
@@ -308,6 +311,11 @@ func runLoop(ctx context.Context, cfg runConfig) (loopResult, error) {
 		return loopResult{}, fmt.Errorf("run %s ended as %s without a report: %s", cfg.runID, final.Run.Status, final.Reason)
 	}
 
+	if cfg.evidenceURL != "" {
+		final.Report.AttachLinks(func(l investigation.EvidenceLink) string {
+			return gateway.PrometheusGraphURL(cfg.evidenceURL, l.Query, l.Window)
+		})
+	}
 	raw, err := json.MarshalIndent(final.Report, "", "  ")
 	if err != nil {
 		return loopResult{}, err

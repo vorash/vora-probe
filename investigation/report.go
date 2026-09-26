@@ -61,6 +61,25 @@ type EvidenceLink struct {
 	RetrievedAt  time.Time         `json:"retrieved_at"`
 	Digest       string            `json:"digest"`
 	Completeness Completeness      `json:"completeness"`
+	// URL lets a human open the exact evidence in its source, when the
+	// controller was told where that source is. It is attached after the
+	// report is built, never by a model, and is absent in replay.
+	URL string `json:"url,omitempty"`
+}
+
+// AttachLinks sets URL on every evidence link in the report, using link to
+// build each from the link's own query and window. Links link returns ""
+// for are left without one.
+func (r *Report) AttachLinks(link func(EvidenceLink) string) {
+	groups := [][]EvidenceLink{r.Supporting, r.Contradicting, r.InsufficientContext}
+	for i := range r.Hypotheses {
+		groups = append(groups, r.Hypotheses[i].Supporting, r.Hypotheses[i].Against, r.Hypotheses[i].Missing)
+	}
+	for _, g := range groups {
+		for i := range g {
+			g[i].URL = link(g[i])
+		}
+	}
 }
 
 type TimelineEntry struct {

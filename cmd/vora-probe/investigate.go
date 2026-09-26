@@ -43,8 +43,12 @@ type investigateConfig struct {
 
 	Lab struct {
 		PrometheusURL string `json:"prometheus_url"`
-		Namespace     string `json:"namespace"`
-		Kubernetes    struct {
+		// PrometheusUIURL is where a human opens the Prometheus UI, which may
+		// differ from the URL the controller queries. When set, reports link
+		// each metric observation to its exact query and window.
+		PrometheusUIURL string `json:"prometheus_ui_url"`
+		Namespace       string `json:"namespace"`
+		Kubernetes      struct {
 			Server    string `json:"server"`
 			TokenFile string `json:"token_file"`
 			CAFile    string `json:"ca_file"`
@@ -153,8 +157,9 @@ func investigate(args []string) error {
 			Claims:    investigation.DefaultClaimPolicy(),
 			Relations: arm,
 		},
-		Gateway: gatewayAdapter,
-		Planner: planner,
+		Gateway:     gatewayAdapter,
+		Planner:     planner,
+		EvidenceURL: cfg.Lab.PrometheusUIURL,
 	})
 	// The report is written even when the run fails; print what exists and let
 	// the error speak for itself.

@@ -25,6 +25,9 @@ type RunOptions struct {
 	OutDir   string
 	Attempt  int
 	Budget   investigation.Budgets
+	// EvidenceURL is the Prometheus UI a human opens evidence in; see
+	// gateway.PrometheusGraphURL.
+	EvidenceURL string
 }
 
 // Run investigates one incident in-process against live time. Like Replay and
@@ -70,17 +73,18 @@ func Run(ctx context.Context, opts RunOptions) (ReplayResult, error) {
 	defer journal.Close()
 
 	res, err := runLoop(ctx, runConfig{
-		engine:   engine,
-		planner:  opts.Planner,
-		gateway:  opts.Gateway,
-		journal:  journal,
-		now:      wallClock,
-		budget:   budget,
-		attempt:  opts.Attempt,
-		runID:    runID,
-		runDir:   runDir,
-		incident: opts.Incident,
-		runner:   inProcessRunner(engine, budget),
+		engine:      engine,
+		planner:     opts.Planner,
+		gateway:     opts.Gateway,
+		journal:     journal,
+		now:         wallClock,
+		budget:      budget,
+		attempt:     opts.Attempt,
+		runID:       runID,
+		runDir:      runDir,
+		incident:    opts.Incident,
+		runner:      inProcessRunner(engine, budget),
+		evidenceURL: opts.EvidenceURL,
 	})
 	if err != nil && !errors.Is(err, ErrNotConcluded) {
 		return ReplayResult{JournalPath: journal.Path()}, err

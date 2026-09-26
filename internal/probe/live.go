@@ -202,6 +202,8 @@ type LiveOptions struct {
 	// Incident, when set, is the subject of the run and BundleDir is not read.
 	// A live lab run has no fixture to load it from.
 	Incident *investigation.Incident
+	// EvidenceURL is the Prometheus UI a human opens evidence in.
+	EvidenceURL string
 }
 
 type LiveResult struct {
@@ -353,20 +355,21 @@ func Investigate(ctx context.Context, opts LiveOptions) (LiveResult, error) {
 	}
 
 	res, err := runLoop(ctx, runConfig{
-		engine:     engine,
-		planner:    planner,
-		gateway:    gw,
-		journal:    journal,
-		now:        now,
-		budget:     budget,
-		attempt:    opts.Attempt,
-		runID:      runID,
-		runDir:     runDir,
-		incident:   incident,
-		maxSteps:   opts.MaxSteps,
-		onEnvelope: opts.OnEnvelope,
-		onCreate:   onCreate,
-		onDestroy:  onDestroy,
+		engine:      engine,
+		planner:     planner,
+		gateway:     gw,
+		journal:     journal,
+		now:         now,
+		budget:      budget,
+		attempt:     opts.Attempt,
+		runID:       runID,
+		runDir:      runDir,
+		incident:    incident,
+		maxSteps:    opts.MaxSteps,
+		onEnvelope:  opts.OnEnvelope,
+		onCreate:    onCreate,
+		onDestroy:   onDestroy,
+		evidenceURL: opts.EvidenceURL,
 	})
 
 	live := LiveResult{
