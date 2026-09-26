@@ -247,10 +247,24 @@ type chatRequest struct {
 	MaxTokens      int                 `json:"max_tokens,omitempty"`
 	Temperature    float64             `json:"temperature"`
 	ResponseFormat *chatResponseFormat `json:"response_format,omitempty"`
+	Provider       *providerPrefs      `json:"provider,omitempty"`
 }
 
 type chatResponseFormat struct {
-	Type string `json:"type"`
+	Type       string          `json:"type"`
+	JSONSchema *chatJSONSchema `json:"json_schema,omitempty"`
+}
+
+type chatJSONSchema struct {
+	Name   string         `json:"name"`
+	Strict bool           `json:"strict"`
+	Schema map[string]any `json:"schema"`
+}
+
+// providerPrefs is OpenRouter's routing control. require_parameters makes it
+// route only to providers that honour every parameter sent.
+type providerPrefs struct {
+	RequireParameters bool `json:"require_parameters"`
 }
 
 type chatMessage struct {

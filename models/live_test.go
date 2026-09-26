@@ -105,8 +105,14 @@ func TestLivePlannerProducesAValidPlannerTurn(t *testing.T) {
 	if err := json.Unmarshal(ft.gotBody, &sent); err != nil {
 		t.Fatal(err)
 	}
-	if sent.ResponseFormat == nil || sent.ResponseFormat.Type != "json_object" {
-		t.Error("the planner must ask for JSON output")
+	// The provider enforces the reply's shape, strictly: lab runs failed on
+	// replies that left fields out, which a schema makes impossible.
+	if sent.ResponseFormat == nil || sent.ResponseFormat.Type != "json_schema" ||
+		sent.ResponseFormat.JSONSchema == nil || !sent.ResponseFormat.JSONSchema.Strict {
+		t.Error("the planner must ask for output constrained by a strict JSON schema")
+	}
+	if sent.Provider != nil {
+		t.Error("an endpoint other than OpenRouter must not be sent OpenRouter's routing field")
 	}
 	if sent.Temperature != 0 {
 		t.Errorf("temperature = %v, want 0 for a planner", sent.Temperature)

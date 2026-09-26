@@ -311,6 +311,15 @@ All retries consume the same persisted budget. There is no unbounded repair
 loop: an invalid planner response is retried once and then ends the run as
 `failed`.
 
+The live planner asks the provider for a strict JSON Schema reply
+(`planner-prompt/v2`). The schema is built from the same closed sets the engine
+enforces, so the provider cannot produce a reply that is missing a field or
+names something outside the allowlist. A field an action kind does not use is
+`null`. On OpenRouter the request also sets `provider.require_parameters`,
+because OpenRouter otherwise silently drops a parameter a provider does not
+support. The engine still validates every reply: the schema narrows what can
+arrive, it does not replace the contract.
+
 Every run publishes a report, whatever its status. A run that ends `failed` or
 `budget_exhausted` gets a report that does not conclude: code builds it from
 the state, it records the hypotheses, evidence, gaps, decisions and trace, and
