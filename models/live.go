@@ -180,6 +180,16 @@ func renderPlannerRequest(r investigation.ModelRequest) string {
 	fmt.Fprintf(&b, "INCIDENT\nid %s\nservice %s, environment %s\nsymptom: %s\nstarted: %s\n",
 		r.Incident.ID, r.Incident.Service, r.Incident.Environment, r.Incident.Symptom,
 		r.Incident.StartedAt.UTC().Format(time.RFC3339))
+	if r.Incident.Trigger == investigation.TriggerForecast {
+		// A forecast is a hypothesis about the future. The planner is told so,
+		// so it weighs the trend against the explanations that would make it
+		// harmless instead of treating the forecast as a failure to explain.
+		b.WriteString("\nFORECAST\nThis incident was opened by a forecast: nothing has failed yet. Weigh " +
+			string(investigation.ClaimExhaustionForecast) + " (the growth continues to the limit) against competing explanations, " +
+			"such as a cycle that will not cross the limit, workload growth that will level off, or growth that follows a recent change " +
+			"(" + string(investigation.ClaimDeploymentRegression) + "). Collect the memory series and the memory limit. " +
+			"Never describe the forecast as a failure that has happened.\n")
+	}
 	fmt.Fprintf(&b, "\nBUDGET\nmodel calls remaining %d, infrastructure calls remaining %d, seconds remaining %d\n",
 		r.Budget.ModelCallsRemaining, r.Budget.InfraCallsRemaining, r.Budget.SecondsRemaining)
 

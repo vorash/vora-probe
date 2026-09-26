@@ -40,11 +40,13 @@ const (
 	TriggerManual Trigger = "manual"
 	TriggerCLI    Trigger = "cli"
 	TriggerAlert  Trigger = "alert"
+	// TriggerForecast: opened by a forecast, before anything has failed.
+	TriggerForecast Trigger = "forecast"
 )
 
 // ClaimPolicyVersion is bumped whenever claim admissibility changes, so that
 // saved reports can be read in the light of the rules that produced them.
-const ClaimPolicyVersion = "claims/v1"
+const ClaimPolicyVersion = "claims/v2"
 
 // RelationPolicyVersion is the version of the deterministic relation rules.
 const RelationPolicyVersion = "relations/v1"
@@ -134,7 +136,7 @@ func (i Incident) Validate() error {
 		return fmt.Errorf("incident symptom must be set")
 	}
 	switch i.Trigger {
-	case TriggerManual, TriggerCLI, TriggerAlert:
+	case TriggerManual, TriggerCLI, TriggerAlert, TriggerForecast:
 	default:
 		return fmt.Errorf("incident trigger %q is invalid", i.Trigger)
 	}
