@@ -34,8 +34,12 @@ func evaluate(args []string) error {
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
-	if *suite != "relations" {
-		return fmt.Errorf("unknown suite %q", *suite)
+	switch *suite {
+	case "relations":
+	case "forecast":
+		return evaluateForecast(*split, *out, *asJSON)
+	default:
+		return fmt.Errorf("unknown suite %q (relations or forecast)", *suite)
 	}
 	if *repeats < 1 {
 		return fmt.Errorf("--repeats must be at least 1")
@@ -152,4 +156,49 @@ func splitList(raw string) []string {
 		}
 	}
 	return out
+}
+
+// evaluateForecast replays the recorded forecast scenarios as a watch loop would
+// and scores them against their answer keys: counts, never probabilities.
+func evaluateForecast(split, out string, asJSON bool) error {
+	var splits []string
+	switch split {
+	case "dev", "held-out":
+		splits = []string{split}
+	case "all":
+		splits = []string{evaluation.SplitDev, evaluation.SplitHeldOut}
+	default:
+		return fmt.Errorf("--split must be dev, held-out or all")
+	}
+	root := filepath.Join(fixtures.Root(), "forecast")
+	var results []evaluation.ForecastSuiteResult
+	for _, sp := range splits {
+		r, err := evaluation.RunForecastSuite(root, sp, evaluation.DefaultWatchPolicy())
+		if err != nil {
+			return fmt.Errorf("%s: %w", sp, err)
+		}
+		results = append(results, r)
+	}
+	raw, err := json.MarshalIndent(results, "", "  ")
+	if err != nil {
+		return err
+	}
+	if asJSON {
+		fmt.Println(string(raw))
+		return nil
+	}
+	path, err := store.WriteArtifact(out, "forecast.json", append(raw, '\n'))
+	if err != nil {
+		return err
+	}
+	for _, r := range results {
+		s := r.Score
+		fmt.Printf("forecast %s (%s), %d cases: %d positive, %d negative, %d unforeseeable\n",
+			r.Split, r.Version, s.Cases, s.Positives, s.Negatives, s.Unforeseeable)
+		fmt.Printf("  detected %d/%d, lead times %v, band held %d/%d\n", s.Detected, s.Positives, s.LeadTimes, s.BandHeld, s.Detected)
+		fmt.Printf("  false alarms %d, opened then withdrawn %d (%d before their predicted crossing), lead-time claims on unforeseeable %d\n",
+			s.FalseAlarms, s.OpenedThenWithdrawn, s.WithdrawnBeforeCrossing, s.LeadTimeClaims)
+	}
+	fmt.Printf("report: %s\n", path)
+	return nil
 }

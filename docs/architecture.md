@@ -229,6 +229,21 @@ thresholds in `ForecastPolicy` are provisional until the development split of
 the lab scenarios sets them, and they are frozen before the held-out split is
 evaluated.
 
+The forecast suite (`evaluate --suite forecast`) replays recorded lab scenarios
+(`test/fixtures/forecast/{dev,held-out}`) the way a watch loop will: every
+minute, over a trailing 30-minute window, using only what had been sampled by
+then. It scores the runs against answer keys that sit beside the cases and are
+read only for scoring:
+
+- positives detected before the kill, with their lead times;
+- how often the first band held the kill;
+- false alarms, meaning a negative with a forecast still open at the end;
+- forecasts opened and then withdrawn, reported separately, with how many were
+  withdrawn before their predicted crossing;
+- lead-time claims on failures that gave no warning, which must be zero.
+
+The results are counts, not rates presented as probabilities.
+
 Replay latency is not reported, because it is not real. The call trace shows
 durations only when a call actually took time, which is the live case.
 
