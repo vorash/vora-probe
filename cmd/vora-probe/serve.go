@@ -114,7 +114,7 @@ func serveCommand(args []string) error {
 		return &investigation.Engine{Policy: gateway.DefaultPolicy(), Claims: investigation.DefaultClaimPolicy(), Relations: arm}
 	}
 
-	investigate, mode, err := investigator(cfg, planner, budget, outDir, newEngine)
+	investigate, mode, err := investigator(cfg.investigateConfig, planner, budget, outDir, newEngine)
 	if err != nil {
 		return err
 	}
@@ -290,7 +290,7 @@ func serveCommand(args []string) error {
 // investigator binds the ports for one investigation. The worker runs in-process
 // unless the config names a Vora API, in which case every step runs in a
 // network-denied sandbox, the hardened mode.
-func investigator(cfg serveConfig, planner models.Planner, budget investigation.Budgets, outDir string, newEngine func() *investigation.Engine) (serve.Investigator, string, error) {
+func investigator(cfg investigateConfig, planner models.Planner, budget investigation.Budgets, outDir string, newEngine func() *investigation.Engine) (serve.Investigator, string, error) {
 	if cfg.Vora.BaseURL == "" {
 		return func(ctx context.Context, incident investigation.Incident, attempt int) (probe.ReplayResult, error) {
 			gw, err := cfg.labGateway()

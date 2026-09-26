@@ -42,6 +42,12 @@ Alert-driven operation is in progress (#13): `vora-probe serve` receives
 Alertmanager webhooks and investigates each new incident, one at a time, under
 rate limits and a per-run deadline. See `docs/architecture.md`.
 
+`vora-probe ask --config lab.json --service checkout-api "why does it restart?"`
+is an investigation with a question for its incident. It is not a chat: it
+runs the same bounded loop, allowlist and claims policy as an alert over the
+last `--since` (at most 1h), prints the report, and exits non-zero when the run
+does not conclude.
+
 ## Requirements
 
 Go 1.25 or newer. No third-party dependencies.

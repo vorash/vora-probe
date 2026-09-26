@@ -37,6 +37,9 @@ usage:
   vora-probe investigate --config <lab.json>
         run an investigation against the live lab: the worker in a Vora sandbox,
         Prometheus and Kubernetes evidence, and model-driven planning
+  vora-probe ask --config <lab.json> --service <name> [--since 30m] [--severity S] "<question>"
+        investigate a question about one service over a recent window, with the same
+        bounded loop, allowlist and claims policy as an alert; prints the report
   vora-probe serve --config <serve.json>
         receive Alertmanager webhooks and investigate each new incident, one at a
         time, with rate limits and a deadline per run; the worker runs in-process
@@ -73,6 +76,8 @@ func run(args []string) error {
 		return investigate(args[1:])
 	case "serve":
 		return serveCommand(args[1:])
+	case "ask":
+		return ask(args[1:])
 	case "verify":
 		return verify(args[1:])
 	case "version":
