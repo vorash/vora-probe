@@ -172,9 +172,7 @@ func TestInvalidPlannerOutputIsRetriedOnceThenFails(t *testing.T) {
 	if step3.Kind != investigation.ResultFinal || step3.Run.Status != investigation.RunFailed {
 		t.Fatalf("a second invalid response must reject the run; got %q with status %q", step3.Kind, step3.Run.Status)
 	}
-	if step3.Report != nil {
-		t.Fatal("a rejected run must not publish a report as if it had concluded")
-	}
+	assertNotConcluded(t, step3.Report, investigation.RunFailed)
 	if step3.Envelope.Run.Used.ModelCalls != 2 {
 		t.Fatalf("rejection must not ask the planner a third time; model calls = %d", step3.Envelope.Run.Used.ModelCalls)
 	}
@@ -184,7 +182,7 @@ func TestInvalidPlannerOutputIsRetriedOnceThenFails(t *testing.T) {
 	}
 }
 
-func TestBudgetExhaustionEndsTheRunWithoutAReport(t *testing.T) {
+func TestBudgetExhaustionEndsTheRunWithAReportThatDoesNotConclude(t *testing.T) {
 	budget := investigation.DefaultBudgets()
 	budget.MaxModelCalls = 1
 	engine := testEngine(gateway.DefaultPolicy())
@@ -217,11 +215,32 @@ func TestBudgetExhaustionEndsTheRunWithoutAReport(t *testing.T) {
 	if step3.Kind != investigation.ResultFinal {
 		t.Fatalf("exhaustion should end the run, got %q", step3.Kind)
 	}
-	if step3.Report != nil {
-		t.Fatal("a budget-exhausted run must not publish a report as if it had concluded")
-	}
+	assertNotConcluded(t, step3.Report, investigation.RunBudgetExhausted)
 	if step3.Run.Status != investigation.RunBudgetExhausted {
 		t.Fatalf("run status = %q, want budget_exhausted", step3.Run.Status)
+	}
+}
+
+// assertNotConcluded pins the report of a run that stopped early. It exists,
+// because a run that stops is the one an operator most needs to read; and it
+// states nothing that could be read as a finding, because none was reached.
+func assertNotConcluded(t *testing.T, report *investigation.Report, status investigation.RunStatus) {
+	t.Helper()
+	if report == nil {
+		t.Fatal("a run that did not conclude must still publish a report")
+	}
+	if report.Concluded() || report.Run.Status != status {
+		t.Fatalf("report status = %q, want %q and not concluded", report.Run.Status, status)
+	}
+	if report.Leading != nil || report.Recommendation != nil || len(report.Claims) != 0 {
+		t.Fatalf("a report that did not conclude must state no finding: leading=%v recommendation=%v claims=%d",
+			report.Leading, report.Recommendation, len(report.Claims))
+	}
+	if !strings.Contains(report.Summary, "Not concluded") || !strings.Contains(report.Summary, report.Run.Reason) {
+		t.Fatalf("the summary must say the run did not conclude, and why: %q", report.Summary)
+	}
+	if !strings.Contains(report.Markdown(), "did not conclude, so nothing is recommended") {
+		t.Fatal("the rendered report must say plainly that nothing is recommended")
 	}
 }
 

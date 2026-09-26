@@ -105,9 +105,12 @@ func (r Report) Markdown() string {
 	}
 
 	b.WriteString("## Recommendation\n\n")
-	if r.Recommendation == nil {
+	switch {
+	case !r.Concluded():
+		b.WriteString("None. The investigation did not conclude, so nothing is recommended.\n\n")
+	case r.Recommendation == nil:
 		b.WriteString("None. The retained evidence does not support a recommendation.\n\n")
-	} else {
+	default:
 		fmt.Fprintf(&b, "**%s**\n\n%s\n\nExecution: %s\n\n", r.Recommendation.Action, r.Recommendation.Rationale, r.Recommendation.Status)
 	}
 

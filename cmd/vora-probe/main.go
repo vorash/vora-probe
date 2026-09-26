@@ -12,6 +12,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -136,9 +137,12 @@ func replay(args []string) error {
 			Relations: arm,
 		},
 	})
-	if err != nil {
+	// A run that did not conclude still has a report, and it is printed; the
+	// error then makes the exit status say it was not a finding.
+	if err != nil && !errors.Is(err, probe.ErrNotConcluded) {
 		return err
 	}
+	runErr := err
 
 	if *asJSON {
 		raw, err := json.MarshalIndent(result.Report, "", "  ")
@@ -146,7 +150,7 @@ func replay(args []string) error {
 			return err
 		}
 		fmt.Println(string(raw))
-		return nil
+		return runErr
 	}
 
 	report := result.Report
@@ -166,7 +170,7 @@ func replay(args []string) error {
 	}
 	fmt.Printf("report: %s\n        %s\njournal: %s\n",
 		result.ReportMarkdownPath, result.ReportJSONPath, result.JournalPath)
-	return nil
+	return runErr
 }
 
 func allowedLabel(allowed bool) string {

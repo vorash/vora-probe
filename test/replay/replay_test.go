@@ -8,6 +8,7 @@ package replay_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -344,58 +345,51 @@ func relationKey(hypothesis, observation string, rel investigation.Relationship,
 	return hypothesis + " " + observation + " " + string(rel) + ": " + reason
 }
 
-// TestAnUnfinishedRunKeepsItsStateButPublishesNoReport covers a run that stops
-// before it concludes. It must not publish a report, since that would present a
-// partial investigation as a finding; but it must still close its journal and
-// leave its final state behind, or the reason it stopped is lost with the
-// worker that decided it.
-func TestAnUnfinishedRunKeepsItsStateButPublishesNoReport(t *testing.T) {
+// TestAnUnfinishedRunPublishesAReportThatDoesNotConclude covers a run that stops
+// before it concludes. It publishes a report, because a run that stops is the
+// one an operator most needs to read, and that report states no finding. The
+// caller also gets ErrNotConcluded, so nothing downstream counts the run as a
+// result.
+func TestAnUnfinishedRunPublishesAReportThatDoesNotConclude(t *testing.T) {
 	budget := investigation.DefaultBudgets()
 	budget.MaxInfraCalls = 1
-	out := t.TempDir()
-	_, err := probe.Replay(context.Background(), probe.ReplayOptions{
+	result, err := probe.Replay(context.Background(), probe.ReplayOptions{
 		BundleDir: filepath.Join(fixtures.Root(), "oom", "oom-positive"),
-		OutDir:    out,
+		OutDir:    t.TempDir(),
 		Budget:    budget,
 	})
-	if err == nil || !strings.Contains(err.Error(), "without a report") {
-		t.Fatalf("an exhausted run must be reported as unfinished, got err = %v", err)
+	if !errors.Is(err, probe.ErrNotConcluded) {
+		t.Fatalf("an exhausted run must be reported as not concluded, got err = %v", err)
+	}
+	report := result.Report
+	if report.Concluded() || report.Run.Status != investigation.RunBudgetExhausted {
+		t.Fatalf("report status = %q, want budget_exhausted and not concluded", report.Run.Status)
+	}
+	if report.Leading != nil || report.Recommendation != nil || len(report.Claims) != 0 {
+		t.Fatal("a report that did not conclude must state no finding")
+	}
+	if len(report.Hypotheses) == 0 {
+		t.Fatal("the report must still show what was being investigated")
 	}
 
-	runDirs, _ := filepath.Glob(filepath.Join(out, "RUN-*"))
-	if len(runDirs) != 1 {
-		t.Fatalf("expected one run directory, found %v", runDirs)
+	for _, path := range []string{result.ReportJSONPath, result.ReportMarkdownPath} {
+		info, err := os.Stat(path)
+		if err != nil {
+			t.Fatalf("the report was not written: %v", err)
+		}
+		if info.Mode().Perm() != 0o600 {
+			t.Fatalf("%s mode = %v, want 0600 like every other artifact", path, info.Mode().Perm())
+		}
 	}
-	runDir := runDirs[0]
-	if _, err := os.Stat(filepath.Join(runDir, "report.json")); !os.IsNotExist(err) {
-		t.Fatalf("an unfinished run must not write report.json (stat err = %v)", err)
-	}
-
-	statePath := filepath.Join(runDir, "state.json")
-	info, err := os.Stat(statePath)
+	markdown, err := os.ReadFile(result.ReportMarkdownPath)
 	if err != nil {
-		t.Fatalf("the final state was not kept: %v", err)
+		t.Fatalf("read report: %v", err)
 	}
-	if info.Mode().Perm() != 0o600 {
-		t.Fatalf("state.json mode = %v, want 0600 like every other artifact", info.Mode().Perm())
-	}
-	raw, err := os.ReadFile(statePath)
-	if err != nil {
-		t.Fatalf("read state: %v", err)
-	}
-	var state investigation.StepEnvelope
-	if err := json.Unmarshal(raw, &state); err != nil {
-		t.Fatalf("state.json is not a state envelope: %v", err)
-	}
-	if state.Run.Status != investigation.RunBudgetExhausted || state.Run.Reason == "" {
-		t.Fatalf("the kept state must say why the run stopped; status = %q reason = %q", state.Run.Status, state.Run.Reason)
+	if !strings.Contains(string(markdown), "Not concluded") {
+		t.Fatal("the rendered report must say the run did not conclude")
 	}
 
-	journal, _ := filepath.Glob(filepath.Join(runDir, "*.journal.jsonl"))
-	if len(journal) != 1 {
-		t.Fatalf("expected one journal, found %v", journal)
-	}
-	lines, err := os.ReadFile(journal[0])
+	lines, err := os.ReadFile(result.JournalPath)
 	if err != nil {
 		t.Fatalf("read journal: %v", err)
 	}

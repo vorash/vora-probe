@@ -209,3 +209,78 @@ func TestRunReadsAndWritesOneLine(t *testing.T) {
 		t.Fatalf("the emitted result must be valid json: %v", err)
 	}
 }
+
+// A long live run used to outgrow the worker state: the engine could not shrink
+// what was left once payloads were gone, and the worker refused the step. That
+// is a budget like any other. The run must end as budget_exhausted, through the
+// worker, with a report saying it did not conclude — and every state handed back
+// before that must leave room for the call record the controller appends.
+func TestAStateThatOutgrowsItsBudgetEndsTheRunWithAReport(t *testing.T) {
+	budget := investigation.DefaultBudgets()
+	budget.MaxEnvelopeBytes = 12 << 10
+	env := envelope()
+	env.Run.Budgets = budget
+	eng := engine()
+
+	action := gateway.Action{Kind: gateway.ActionKubernetesContainers, Entity: "payment-api", Reason: "check"}
+	payload, err := json.Marshal(gateway.PodList{Namespace: "lab", Pods: []gateway.Pod{{
+		Name: "payment-api-1", Namespace: "lab", Phase: "Running", StartTime: env.Incident.StartedAt,
+		Containers: []gateway.ContainerStatus{{Name: "app", State: "running", RestartCount: 2}},
+	}}})
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	answer := gateway.Response{
+		SchemaVersion: gateway.SchemaVersion, Kind: action.Kind, Entity: action.Entity,
+		Status: gateway.StatusOK, Completeness: gateway.Complete, RetrievedAt: env.Incident.StartedAt,
+		Digest: gateway.Digest(payload), Payload: payload,
+	}
+	plan := investigation.ModelResponse{
+		SchemaVersion: gateway.SchemaVersion, Reason: "keep looking", NextAction: &action,
+		Hypotheses: []investigation.HypothesisSpec{
+			{Statement: "payment-api exceeded its memory limit", FaultDomain: investigation.DomainKubernetes, ClaimKind: investigation.ClaimMemoryLimitTermination},
+			{Statement: "payment-api restarts for a reason other than memory", FaultDomain: investigation.DomainApplication, ClaimKind: investigation.ClaimNonMemoryRestart},
+		},
+	}
+
+	var pending *investigation.Pending
+	for step := 0; step < 200; step++ {
+		input, err := json.Marshal(investigation.WorkerInput{State: env, Pending: pending})
+		if err != nil {
+			t.Fatalf("marshal: %v", err)
+		}
+		out, err := worker.Step(eng, input, budget.MaxEnvelopeBytes, budget.MaxResponseBytes)
+		if err != nil {
+			t.Fatalf("step %d: the worker failed instead of ending the run: %v", step, err)
+		}
+		var result investigation.StepResult
+		if err := json.Unmarshal(out, &result); err != nil {
+			t.Fatalf("unmarshal: %v", err)
+		}
+		if result.Kind == investigation.ResultFinal {
+			if result.Run.Status != investigation.RunBudgetExhausted || !strings.Contains(result.Run.Reason, "worker state budget exhausted") {
+				t.Fatalf("run ended as %q (%s), want the state budget exhausted", result.Run.Status, result.Run.Reason)
+			}
+			if result.Report == nil || result.Report.Concluded() || result.Report.Leading != nil {
+				t.Fatal("the run must end with a report that does not conclude")
+			}
+			return
+		}
+		env = result.Envelope
+		// The controller appends a call record after every request; the next
+		// input must still be accepted with it.
+		env.Trace = append(env.Trace, investigation.Call{
+			SchemaVersion: gateway.SchemaVersion, ID: "CALL-9999", RunID: env.Run.ID, IncidentID: env.Incident.ID,
+			Step: result.Step, Kind: investigation.CallInfra, Target: action.Key(),
+			RequestDigest: gateway.Digest(payload), ResponseDigest: gateway.Digest(payload), Status: investigation.CallOK,
+		})
+		switch result.Kind {
+		case investigation.ResultModelRequest:
+			p := plan
+			pending = &investigation.Pending{Kind: investigation.PendingModel, Model: &p}
+		case investigation.ResultInfraRequest:
+			pending = &investigation.Pending{Kind: investigation.PendingInfra, Action: &action, Response: &answer}
+		}
+	}
+	t.Fatal("the run never ended: the state budget was not enforced")
+}

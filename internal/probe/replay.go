@@ -148,7 +148,7 @@ func Replay(ctx context.Context, opts ReplayOptions) (ReplayResult, error) {
 		runner:     runner,
 		onEnvelope: opts.OnEnvelope,
 	})
-	if err != nil {
+	if err != nil && !errors.Is(err, ErrNotConcluded) {
 		return ReplayResult{}, err
 	}
 
@@ -160,7 +160,7 @@ func Replay(ctx context.Context, opts ReplayOptions) (ReplayResult, error) {
 		PlannerTurns:       planner.Consumed(),
 		InfraCalls:         gw.Executed(),
 		Steps:              res.steps,
-	}, nil
+	}, err
 }
 
 // loadBundle loads and verifies a fixture bundle. Verification is not optional:
@@ -308,19 +308,9 @@ func runLoop(ctx context.Context, cfg runConfig) (loopResult, error) {
 	}
 
 	if final.Report == nil {
-		// A failed or exhausted run publishes no report, because it did not
-		// conclude. Its final state is still kept, so the decision that ended it
-		// is an artifact rather than something only the journal knows.
-		raw, err := json.MarshalIndent(final.Envelope, "", "  ")
-		if err != nil {
-			return loopResult{}, err
-		}
-		path, err := store.WriteArtifact(cfg.runDir, "state.json", append(raw, '\n'))
-		if err != nil {
-			return loopResult{}, err
-		}
-		return loopResult{}, fmt.Errorf("run %s ended as %s without a report: %s (final state in %s)",
-			cfg.runID, final.Run.Status, final.Reason, path)
+		// The engine publishes a report on every final result, including a run
+		// that did not conclude. A final without one is a broken worker.
+		return loopResult{}, fmt.Errorf("run %s ended as %s without a report: %s", cfg.runID, final.Run.Status, final.Reason)
 	}
 
 	raw, err := json.MarshalIndent(final.Report, "", "  ")
@@ -336,13 +326,24 @@ func runLoop(ctx context.Context, cfg runConfig) (loopResult, error) {
 		return loopResult{}, err
 	}
 
-	return loopResult{
+	res := loopResult{
 		report:             *final.Report,
 		steps:              final.Step,
 		reportJSONPath:     jsonPath,
 		reportMarkdownPath: mdPath,
-	}, nil
+	}
+	if !final.Report.Concluded() {
+		// The report is written and returned: it is the record of why the run
+		// stopped. The error is what keeps a caller from counting it as a
+		// finding.
+		return res, fmt.Errorf("%w: run %s ended as %s: %s", ErrNotConcluded, cfg.runID, final.Run.Status, final.Run.Reason)
+	}
+	return res, nil
 }
+
+// ErrNotConcluded marks a run that stopped before concluding: failed, or out of
+// budget. Its report exists and is returned alongside, and states no finding.
+var ErrNotConcluded = errors.New("investigation did not conclude")
 
 // stepOnce performs one transition, resolving whichever request the worker
 // emitted and feeding the answer back into the envelope. Requests are journaled

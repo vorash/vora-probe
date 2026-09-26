@@ -60,6 +60,12 @@ observation does not fit, the payload is dropped, the observation is marked
 `truncated`, and it becomes a coverage gap — oversize input is reported, never
 silently treated as complete.
 
+The engine fits the state 2 KiB under the cap, leaving room for the call record
+the controller appends before the next step. When dropping payloads is not
+enough, the state budget is exhausted like any other: the run ends as
+`budget_exhausted` with a report. A final envelope is never fed back to a
+worker, so it is bound by the whole-result limit rather than the state cap.
+
 `counters` carries the ID sequences. A worker is invoked fresh for every
 transition, so without them the second observation of a run would be numbered
 `OBS-0001` again.
@@ -154,7 +160,16 @@ durations only when a call actually took time, which is the live case.
 | Rendered statement | 2 KiB | `investigation.joinBounded` |
 
 All retries consume the same persisted budget. There is no unbounded repair
-loop: an invalid planner response is retried once and then rejects the run.
+loop: an invalid planner response is retried once and then ends the run as
+`failed`.
+
+Every run publishes a report, whatever its status. A run that ends `failed` or
+`budget_exhausted` gets a report that does not conclude: code builds it from
+the state, it records the hypotheses, evidence, gaps, decisions and trace, and
+it states no leading claim, evaluates no claims and recommends nothing, because
+a verdict on partial evidence reads as a conclusion whatever it is labelled.
+Callers also get `probe.ErrNotConcluded` beside the report, so nothing
+downstream counts the run as a finding; the CLI exits non-zero.
 
 ## Policy layers
 
@@ -203,10 +218,8 @@ Ground truth never enters the planner or the evaluator. It lives in
   because that is exactly what an interruption leaves behind. A live run also
   records `sandbox` created/destroyed events, which correlate the run with the
   sandbox it ran in.
-- `report.json`, `report.md` — the report in machine and human form.
-- `state.json` — written instead of a report when a run ends `failed` or
-  `budget_exhausted`. It is the final state envelope, so the decision that ended
-  the run survives the worker; it is not a report and makes no finding.
+- `report.json`, `report.md` — the report in machine and human form, written
+  for every run, including one that did not conclude.
 - One investigation at a time, enforced by a `flock` on `<out>/probe.lock`, which
   the kernel releases even if the process dies.
 - Artifacts are owner-readable (`0600`), live artifacts are git-ignored, and the
