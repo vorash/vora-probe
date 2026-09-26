@@ -106,16 +106,7 @@ func investigate(args []string) error {
 		return err
 	}
 
-	gatewayAdapter, err := live.New(live.Config{
-		PrometheusURL: cfg.Lab.PrometheusURL,
-		Namespace:     cfg.Lab.Namespace,
-		Kubernetes: live.KubernetesConfig{
-			Server: cfg.Lab.Kubernetes.Server,
-			Token:  mustReadSecret(cfg.Lab.Kubernetes.TokenFile, "kubernetes token"),
-			CAFile: cfg.Lab.Kubernetes.CAFile,
-		},
-		Policy: gateway.DefaultPolicy(),
-	})
+	gatewayAdapter, err := cfg.labGateway()
 	if err != nil {
 		return err
 	}
@@ -132,27 +123,7 @@ func investigate(args []string) error {
 	if err != nil {
 		return err
 	}
-	budget := investigation.DefaultBudgets()
-	if cfg.Budget != nil {
-		if cfg.Budget.MaxDurationSeconds > 0 {
-			budget.MaxDurationSeconds = cfg.Budget.MaxDurationSeconds
-		}
-		if cfg.Budget.MaxInfraCalls > 0 {
-			budget.MaxInfraCalls = cfg.Budget.MaxInfraCalls
-		}
-		if cfg.Budget.MaxModelCalls > 0 {
-			budget.MaxModelCalls = cfg.Budget.MaxModelCalls
-		}
-		if cfg.Budget.MaxResponseBytes > 0 {
-			budget.MaxResponseBytes = cfg.Budget.MaxResponseBytes
-		}
-		if cfg.Budget.MaxEnvelopeBytes > 0 {
-			budget.MaxEnvelopeBytes = cfg.Budget.MaxEnvelopeBytes
-		}
-		if cfg.Budget.MaxSteps > 0 {
-			budget.MaxSteps = cfg.Budget.MaxSteps
-		}
-	}
+	budget := cfg.budget()
 
 	stepTimeout, err := parseDuration(cfg.Worker.StepTimeout, 60*time.Second)
 	if err != nil {
@@ -239,6 +210,46 @@ func (c investigateConfig) incidentValue() (investigation.Incident, error) {
 		incident.Window.End = incident.StartedAt
 	}
 	return incident, nil
+}
+
+// budget is the run budget: the defaults, with any configured ceiling applied.
+func (c investigateConfig) budget() investigation.Budgets {
+	budget := investigation.DefaultBudgets()
+	if c.Budget != nil {
+		if c.Budget.MaxDurationSeconds > 0 {
+			budget.MaxDurationSeconds = c.Budget.MaxDurationSeconds
+		}
+		if c.Budget.MaxInfraCalls > 0 {
+			budget.MaxInfraCalls = c.Budget.MaxInfraCalls
+		}
+		if c.Budget.MaxModelCalls > 0 {
+			budget.MaxModelCalls = c.Budget.MaxModelCalls
+		}
+		if c.Budget.MaxResponseBytes > 0 {
+			budget.MaxResponseBytes = c.Budget.MaxResponseBytes
+		}
+		if c.Budget.MaxEnvelopeBytes > 0 {
+			budget.MaxEnvelopeBytes = c.Budget.MaxEnvelopeBytes
+		}
+		if c.Budget.MaxSteps > 0 {
+			budget.MaxSteps = c.Budget.MaxSteps
+		}
+	}
+	return budget
+}
+
+// labGateway is the live evidence port for the lab the config names.
+func (c investigateConfig) labGateway() (*live.Gateway, error) {
+	return live.New(live.Config{
+		PrometheusURL: c.Lab.PrometheusURL,
+		Namespace:     c.Lab.Namespace,
+		Kubernetes: live.KubernetesConfig{
+			Server: c.Lab.Kubernetes.Server,
+			Token:  mustReadSecret(c.Lab.Kubernetes.TokenFile, "kubernetes token"),
+			CAFile: c.Lab.Kubernetes.CAFile,
+		},
+		Policy: gateway.DefaultPolicy(),
+	})
 }
 
 func mustReadSecret(path, what string) string {

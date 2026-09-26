@@ -38,6 +38,10 @@ Steps 1 and 2 are implemented and run entirely offline:
 Steps 4 onwards land as their own reviewed pull requests and are gated on
 operator-supplied infrastructure.
 
+Alert-driven operation is in progress (#13): `vora-probe serve` receives
+Alertmanager webhooks and investigates each new incident, one at a time, under
+rate limits and a per-run deadline. See `docs/architecture.md`.
+
 ## Requirements
 
 Go 1.25 or newer. No third-party dependencies.

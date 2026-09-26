@@ -451,10 +451,36 @@ func TestInvestigateDestroysTheSandboxWhenTheWorkerMisbehaves(t *testing.T) {
 	if created != 1 || destroyed != 1 {
 		t.Fatalf("create/destroy = %d/%d, want 1/1", created, destroyed)
 	}
-	for _, e := range readJournal(t, live.JournalPath) {
-		if e.Kind == store.EventRunFinished {
-			t.Fatal("an interrupted run must not be journaled as finished")
+	// The run is closed with a report, because a failed sandbox is exactly what
+	// an operator has to read about; but it must never read as a success. The
+	// request stays unanswered in the journal, the run is closed as failed, and
+	// the report states no finding.
+	if !errors.Is(err, ErrNotConcluded) {
+		t.Fatalf("error = %v, want it marked as not concluded", err)
+	}
+	if live.Report.Concluded() || live.Report.Run.Status != investigation.RunFailed || live.Report.Leading != nil {
+		t.Fatalf("report status = %q (leading %v), want failed with no finding", live.Report.Run.Status, live.Report.Leading)
+	}
+	if _, err := os.Stat(live.ReportJSONPath); err != nil {
+		t.Fatalf("the report of a failed run was not written: %v", err)
+	}
+	events := readJournal(t, live.JournalPath)
+	unanswered := 0
+	for _, e := range events {
+		switch e.Kind {
+		case store.EventRequest:
+			unanswered++
+		case store.EventResult:
+			unanswered--
 		}
+	}
+	last := events[len(events)-1]
+	var run investigation.Run
+	if err := json.Unmarshal(last.Payload, &run); err != nil || last.Kind != store.EventRunFinished || run.Status != investigation.RunFailed {
+		t.Fatalf("the journal must close with run_finished as failed; got %q (%v)", last.Kind, err)
+	}
+	if unanswered != 0 {
+		t.Fatalf("%d requests were left unanswered; the malformed answer came from the worker, before any request", unanswered)
 	}
 }
 

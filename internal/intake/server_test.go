@@ -15,7 +15,7 @@ const testToken = "s3cret-token"
 func newServer(t *testing.T) (*httptest.Server, *Intake) {
 	t.Helper()
 	in := newIntake(receivedAt)
-	h, err := Handler(in, testToken)
+	h, err := Handler(in, testToken, nil)
 	if err != nil {
 		t.Fatalf("handler: %v", err)
 	}
@@ -88,7 +88,7 @@ func TestTheWebhookRequiresTheBearerToken(t *testing.T) {
 // An empty token would make every request authorized, because an empty header
 // compares equal to it. The server refuses to start instead.
 func TestTheHandlerRefusesAnEmptyToken(t *testing.T) {
-	if _, err := Handler(newIntake(receivedAt), ""); err == nil {
+	if _, err := Handler(newIntake(receivedAt), "", nil); err == nil {
 		t.Fatal("a handler without a token must not be built")
 	}
 }

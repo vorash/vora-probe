@@ -67,6 +67,34 @@ type Record struct {
 	// Notifications are every payload attributed to this incident, redacted,
 	// in arrival order.
 	Notifications []Delivery `json:"notifications"`
+	// Investigation is what became of the incident after intake. An incident
+	// is never just dropped: held back by a rate limit is a state too.
+	Investigation Investigation `json:"investigation"`
+}
+
+// InvestigationState is where an incident is in the queue.
+type InvestigationState string
+
+const (
+	InvestigationPending      InvestigationState = ""
+	InvestigationQueued       InvestigationState = "queued"
+	InvestigationRateLimited  InvestigationState = "rate_limited"
+	InvestigationRunning      InvestigationState = "investigating"
+	InvestigationConcluded    InvestigationState = "concluded"
+	InvestigationNotConcluded InvestigationState = "not_concluded"
+	// InvestigationError: the run could not even produce a report, for
+	// example because its journal could not be opened.
+	InvestigationError InvestigationState = "error"
+)
+
+// Investigation records one incident's investigation, as the server saw it.
+type Investigation struct {
+	State     InvestigationState      `json:"state,omitempty"`
+	Reason    string                  `json:"reason,omitempty"`
+	RunStatus investigation.RunStatus `json:"run_status,omitempty"`
+	Report    string                  `json:"report,omitempty"`
+	StartedAt *time.Time              `json:"started_at,omitempty"`
+	EndedAt   *time.Time              `json:"ended_at,omitempty"`
 }
 
 // Delivery is one notification as received.
@@ -320,6 +348,19 @@ func (in *Intake) normalize(n Notification, fp string, now time.Time) (*Record, 
 
 const maxSymptomBytes = 512
 
+// Update changes one incident under intake's lock. It is how the server records
+// what became of an incident, so every state change goes through one place.
+func (in *Intake) Update(id string, change func(*Record)) bool {
+	in.mu.Lock()
+	defer in.mu.Unlock()
+	r, ok := in.byID[id]
+	if !ok {
+		return false
+	}
+	change(r)
+	return true
+}
+
 // Get returns a copy of one incident.
 func (in *Intake) Get(id string) (Record, bool) {
 	in.mu.Lock()
@@ -360,9 +401,16 @@ func (in *Intake) Unmapped() []Delivery {
 func copyRecord(r *Record) Record {
 	c := *r
 	c.Notifications = slices.Clone(r.Notifications)
-	if r.ResolvedAt != nil {
-		at := *r.ResolvedAt
-		c.ResolvedAt = &at
-	}
+	c.ResolvedAt = copyTime(r.ResolvedAt)
+	c.Investigation.StartedAt = copyTime(r.Investigation.StartedAt)
+	c.Investigation.EndedAt = copyTime(r.Investigation.EndedAt)
 	return c
+}
+
+func copyTime(t *time.Time) *time.Time {
+	if t == nil {
+		return nil
+	}
+	at := *t
+	return &at
 }

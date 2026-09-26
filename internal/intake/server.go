@@ -18,7 +18,11 @@ const MaxNotificationBytes = 1 << 20
 // Handler serves the intake routes. Every route but /healthz requires the
 // bearer token; the read routes are GET-only, so the API can report on
 // incidents but never change one.
-func Handler(in *Intake, token string) (http.Handler, error) {
+//
+// received, when set, is told about every recorded notification after the
+// response is decided and before it is written. It must not block: the server
+// queues work there, it never does it.
+func Handler(in *Intake, token string, received func(Received)) (http.Handler, error) {
 	if token == "" {
 		// An empty token would make the constant-time compare accept an
 		// empty Authorization header. Refuse to start rather than run open.
@@ -47,15 +51,18 @@ func Handler(in *Intake, token string) (http.Handler, error) {
 			writeError(w, http.StatusBadRequest, err)
 			return
 		}
-		received, err := in.Receive(n, raw)
+		outcome, err := in.Receive(n, raw)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, err)
 			return
 		}
+		if received != nil {
+			received(outcome)
+		}
 		// 202 whatever the outcome: the notification is recorded, and
 		// whether it is investigated is intake's decision, not something the
 		// sender should retry over.
-		writeJSON(w, http.StatusAccepted, received)
+		writeJSON(w, http.StatusAccepted, outcome)
 	})))
 	mux.Handle("GET /incidents", authorized(token, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, in.List())

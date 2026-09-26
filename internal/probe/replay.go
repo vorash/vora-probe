@@ -240,13 +240,10 @@ func runLoop(ctx context.Context, cfg runConfig) (loopResult, error) {
 		return loopResult{}, err
 	}
 
-	runner := cfg.runner
-	if cfg.onCreate != nil {
-		var err error
-		runner, err = cfg.onCreate(ctx)
-		if err != nil {
-			return loopResult{}, err
-		}
+	env := investigation.StepEnvelope{
+		SchemaVersion: gateway.SchemaVersion,
+		Incident:      cfg.incident,
+		Run:           run,
 	}
 	// Teardown must survive a cancelled context: if the run is abandoned, the
 	// sandbox still has to go away, or the next attempt inherits a leak.
@@ -263,36 +260,34 @@ func runLoop(ctx context.Context, cfg runConfig) (loopResult, error) {
 	// regardless, including on paths that never reach run_finished.
 	defer destroy()
 
-	env := investigation.StepEnvelope{
-		SchemaVersion: gateway.SchemaVersion,
-		Incident:      cfg.incident,
-		Run:           run,
-	}
-
-	maxSteps := cfg.maxSteps
-	if maxSteps == 0 {
-		maxSteps = cfg.budget.MaxSteps * 2
-	}
-	var final investigation.StepResult
-	var pending *investigation.Pending
-	finished := false
-	for step := 0; step < maxSteps; step++ {
-		if cfg.onEnvelope != nil {
-			cfg.onEnvelope(env)
+	var (
+		final   investigation.StepResult
+		stopped error
+	)
+	runner := cfg.runner
+	if cfg.onCreate != nil {
+		var err error
+		if runner, err = cfg.onCreate(ctx); err != nil {
+			stopped = err
 		}
-		result, next, err := stepOnce(ctx, cfg, runner, env, pending)
+	}
+	if stopped == nil {
+		final, env, stopped = drive(ctx, cfg, runner, env)
+	}
+	if stopped != nil {
+		// The controller could not continue: a stalled planner past the
+		// deadline, a refused request, a failed worker or sandbox. The run is
+		// still closed with a report, from the last state held here, so the
+		// runs an operator most needs to read are never left without one.
+		status := investigation.RunFailed
+		if errors.Is(stopped, context.DeadlineExceeded) || errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			status = investigation.RunBudgetExhausted
+		}
+		abandoned, err := cfg.engine.Abandon(env, status, stopped.Error())
 		if err != nil {
-			return loopResult{}, err
+			return loopResult{}, errors.Join(stopped, err)
 		}
-		env, pending = next, result.Pending
-		if result.Result.Kind == investigation.ResultFinal {
-			final = result.Result
-			finished = true
-			break
-		}
-	}
-	if !finished {
-		return loopResult{}, fmt.Errorf("investigation did not terminate within %d steps", maxSteps)
+		final = abandoned
 	}
 
 	// Reap the sandbox before declaring the run finished: run_finished is the
@@ -335,7 +330,11 @@ func runLoop(ctx context.Context, cfg runConfig) (loopResult, error) {
 	if !final.Report.Concluded() {
 		// The report is written and returned: it is the record of why the run
 		// stopped. The error is what keeps a caller from counting it as a
-		// finding.
+		// finding, and it still carries the cause, so an interrupted worker
+		// remains ErrInterrupted.
+		if stopped != nil {
+			return res, fmt.Errorf("%w: run %s ended as %s: %w", ErrNotConcluded, cfg.runID, final.Run.Status, stopped)
+		}
 		return res, fmt.Errorf("%w: run %s ended as %s: %s", ErrNotConcluded, cfg.runID, final.Run.Status, final.Run.Reason)
 	}
 	return res, nil
@@ -344,6 +343,30 @@ func runLoop(ctx context.Context, cfg runConfig) (loopResult, error) {
 // ErrNotConcluded marks a run that stopped before concluding: failed, or out of
 // budget. Its report exists and is returned alongside, and states no finding.
 var ErrNotConcluded = errors.New("investigation did not conclude")
+
+// drive runs worker steps until one is final. On failure it returns the last
+// state it holds, which is what the run is then closed from.
+func drive(ctx context.Context, cfg runConfig, runner StepRunner, env investigation.StepEnvelope) (investigation.StepResult, investigation.StepEnvelope, error) {
+	maxSteps := cfg.maxSteps
+	if maxSteps == 0 {
+		maxSteps = cfg.budget.MaxSteps * 2
+	}
+	var pending *investigation.Pending
+	for step := 0; step < maxSteps; step++ {
+		if cfg.onEnvelope != nil {
+			cfg.onEnvelope(env)
+		}
+		result, next, err := stepOnce(ctx, cfg, runner, env, pending)
+		if err != nil {
+			return investigation.StepResult{}, next, err
+		}
+		env, pending = next, result.Pending
+		if result.Result.Kind == investigation.ResultFinal {
+			return result.Result, env, nil
+		}
+	}
+	return investigation.StepResult{}, env, fmt.Errorf("investigation did not terminate within %d steps", maxSteps)
+}
 
 // stepOnce performs one transition, resolving whichever request the worker
 // emitted and feeding the answer back into the envelope. Requests are journaled
