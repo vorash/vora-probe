@@ -112,7 +112,10 @@ func (e *Engine) Step(input WorkerInput) (StepResult, error) {
 			if errors.Is(err, errBudgetExhausted) {
 				return e.finish(s, RunBudgetExhausted, err.Error())
 			}
-			return StepResult{}, err
+			// Ended as a failed run, not a worker error: an error leaves the
+			// controller nothing to record, and a twice-rejected planner is an
+			// outcome of the run, with the escalation that explains it.
+			return e.finish(s, RunFailed, err.Error())
 		}
 		if done {
 			return e.finalReport(s, now)
@@ -199,6 +202,12 @@ func (e *Engine) reassess(s *state) error {
 	// version, hypothesis still live and unrevised, evidence still retained.
 	// Everything else is re-asked. Re-labelling evidence that is already
 	// labelled would multiply a model arm's cost by the number of reassessments.
+	//
+	// The deterministic arm keeps nothing. Its rules read the whole body of
+	// evidence, so a label can go stale when other evidence arrives: a working
+	// set labelled "no configured limit to compare against" is wrong once the
+	// limit is retained. It is free to re-ask, so it always is.
+	fresh := arm.Arm() == DeterministicArm
 	alive := make(map[string]bool, len(s.env.Hypotheses))
 	for _, h := range s.env.Hypotheses {
 		alive[h.ID] = true
@@ -209,7 +218,7 @@ func (e *Engine) reassess(s *state) error {
 		if _, ok := byID[r.Observation]; !ok {
 			continue
 		}
-		if !alive[r.Hypothesis] || s.stale[r.Hypothesis] {
+		if fresh || !alive[r.Hypothesis] || s.stale[r.Hypothesis] {
 			continue
 		}
 		if string(r.Evaluator) != arm.Arm() || r.PolicyVersion != arm.ArmVersion() {

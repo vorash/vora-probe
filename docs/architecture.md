@@ -170,6 +170,9 @@ Ground truth never enters the planner or the evaluator. It lives in
   records `sandbox` created/destroyed events, which correlate the run with the
   sandbox it ran in.
 - `report.json`, `report.md` — the report in machine and human form.
+- `state.json` — written instead of a report when a run ends `failed` or
+  `budget_exhausted`. It is the final state envelope, so the decision that ended
+  the run survives the worker; it is not a report and makes no finding.
 - One investigation at a time, enforced by a `flock` on `<out>/probe.lock`, which
   the kernel releases even if the process dies.
 - Artifacts are owner-readable (`0600`), live artifacts are git-ignored, and the
@@ -203,8 +206,12 @@ Two properties are enforced on every arm:
 Model calls are charged to the model-call budget, and only calls marked remote
 are charged — the deterministic arm answers from rules and must not be priced as
 if it called a model. Evidence is labelled incrementally and a hypothesis revised
-by the planner has its labels dropped, so an arm's call count is a property of the
-arm rather than of how often the loop happens to reassess.
+by the planner has its labels dropped, so a model arm's call count is a property
+of the arm rather than of how often the loop happens to reassess. The
+deterministic arm is the exception: its rules read the whole body of evidence, so
+a label can go stale when later evidence arrives (a working set labelled "no
+configured limit" once the limit is retained), and since it costs nothing it is
+re-asked about every observation on every reassessment.
 
 ## Reading a comparison
 
