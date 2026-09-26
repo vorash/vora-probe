@@ -346,6 +346,15 @@ still `ErrInterrupted`. Only a controller that dies outright leaves no report
 for that attempt: its journal still shows the unanswered request, and in server
 mode the incident runs again as its next attempt when the server restarts.
 
+## Incident classes
+
+An alert maps to a class (`investigation.Classes`); `ContainerRestartLoop` and
+`KubePodCrashLooping` are `crashloop`, and `ContainerOOMKilled` is `oom`.
+Intake records the class on the incident. The planner is told the class's
+competing hypotheses and the evidence to collect first, as guidance: it still
+proposes what it judges, and the claims policy is the same for every class. A
+class never makes a conclusion admissible.
+
 ## Logs
 
 `logs.query` is a closed action. The model names one filter from

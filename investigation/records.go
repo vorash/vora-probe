@@ -46,7 +46,7 @@ const (
 
 // ClaimPolicyVersion is bumped whenever claim admissibility changes, so that
 // saved reports can be read in the light of the rules that produced them.
-const ClaimPolicyVersion = "claims/v2"
+const ClaimPolicyVersion = "claims/v3"
 
 // RelationPolicyVersion is the version of the deterministic relation rules.
 const RelationPolicyVersion = "relations/v1"
@@ -120,6 +120,9 @@ type Incident struct {
 	// Severity is the alert's, when the incident came from one. It decides
 	// which actions an investigation is offered: logs only for serious ones.
 	Severity string `json:"severity,omitempty"`
+	// Class is the incident class its alert maps to (see Classes). It guides
+	// the planner; it never limits what may be concluded.
+	Class string `json:"class,omitempty"`
 }
 
 func (i Incident) Validate() error {

@@ -6,7 +6,7 @@ reviewable decision rather than a prompt tweak.
 
 The policy lives in `internal/investigation/claims.go`. It runs *after* the
 model and reads only retained evidence, so it cannot be talked out of a
-refusal. Its version, `claims/v2`, is stamped on every verdict that appears in a
+refusal. Its version, `claims/v3`, is stamped on every verdict that appears in a
 report.
 
 ## Claim kinds
@@ -20,6 +20,8 @@ report.
 | `resource_saturation` | CPU saturation caused the impact. | Peak CPU ratio reaches 0.85. |
 | `non_memory_restart` | The restarts are not memory-driven. | A termination reason other than `OOMKilled`, or a probe-failure event, **and** no memory-limit kill is evidenced. |
 | `unknown_cause` | The evidence does not establish a cause. | Always. Inconclusive is a valid result. |
+| `liveness_probe_restart` | The kubelet restarts the container because its liveness probe fails. | A **liveness** probe failure **and** a restart are evidenced, no memory-limit kill is, and the claim cites the failure. A readiness failure never qualifies: it takes the pod out of service and does not restart it. |
+| `application_crash` | The container exits by itself with an application error. | A termination with an application exit code (not 137 or 143, which are signals), no memory-limit kill, and **no liveness failure beside it**. With one, which ended the container is not established, and the claim is narrowed. |
 | `exhaustion_forecast` | Memory reaches its limit within the horizon *if the current growth persists*. | `forecast/v1` makes a within-horizon forecast from the retained working set and limit, **and** the claim cites both. The statement is rendered by code and is always conditional. The claim never carries a recommendation. |
 
 ## The three refusals that matter
@@ -47,6 +49,14 @@ lines that were already there before it explain nothing
 `unavailable` or `truncated` becomes a coverage gap on the facts for that
 entity. The claim that needed it is refused with a narrowed statement, and the
 gap is published in the report. `missing-telemetry` pins this.
+
+## A SIGKILL is not a memory kill
+
+A memory-limit kill is what Kubernetes records as `OOMKilled`. Exit code 137
+alone only means the process was sent SIGKILL, which is also how the kubelet
+ends a container whose liveness probe fails. Until `claims/v3`, any exit 137
+counted as a memory kill, so every liveness restart would have read as memory
+evidence. A 137 with no recorded reason is now ambiguous: it counts as neither.
 
 ## Forecasts are hypotheses about the future
 

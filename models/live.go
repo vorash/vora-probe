@@ -256,6 +256,20 @@ func renderPlannerRequest(r investigation.ModelRequest) string {
 	fmt.Fprintf(&b, "INCIDENT\nid %s\nservice %s, environment %s\nsymptom: %s\nstarted: %s\n",
 		r.Incident.ID, r.Incident.Service, r.Incident.Environment, r.Incident.Symptom,
 		r.Incident.StartedAt.UTC().Format(time.RFC3339))
+	if class, ok := investigation.ClassNamed(r.Incident.Class); ok {
+		// Guidance, not a constraint: the planner still proposes what it
+		// judges, and the claims policy is the same for every class.
+		kinds := make([]string, 0, len(class.Hypotheses))
+		for _, k := range class.Hypotheses {
+			kinds = append(kinds, string(k))
+		}
+		first := make([]string, 0, len(class.FirstEvidence))
+		for _, a := range class.FirstEvidence {
+			first = append(first, string(a))
+		}
+		fmt.Fprintf(&b, "\nINCIDENT CLASS %s\n%s\nCompeting hypotheses worth weighing: %s. Evidence to collect first: %s.\n",
+			class.Name, class.Guidance, strings.Join(kinds, ", "), strings.Join(first, ", "))
+	}
 	if r.Incident.Trigger == investigation.TriggerForecast {
 		// A forecast is a hypothesis about the future. The planner is told so,
 		// so it weighs the trend against the explanations that would make it
