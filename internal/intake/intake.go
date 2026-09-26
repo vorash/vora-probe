@@ -71,6 +71,22 @@ type Record struct {
 	// Investigation is what became of the incident after intake. An incident
 	// is never just dropped: held back by a rate limit is a state too.
 	Investigation Investigation `json:"investigation"`
+	// Post is the incident's message in chat, once there is one. Its ts is
+	// what makes delivery idempotent: a retry that finds it does not post
+	// again, and resolutions go into its thread.
+	Post *Post `json:"post,omitempty"`
+}
+
+// Post records one incident's outbound message.
+type Post struct {
+	Channel      string     `json:"channel,omitempty"`
+	TS           string     `json:"ts,omitempty"`
+	PostedAt     *time.Time `json:"posted_at,omitempty"`
+	ResolutionTS string     `json:"resolution_ts,omitempty"`
+	Attempts     int        `json:"attempts,omitempty"`
+	// Error is the last failure. Delivery failing never fails the
+	// investigation: the report is already on disk.
+	Error string `json:"error,omitempty"`
 }
 
 // InvestigationState is where an incident is in the queue.
@@ -376,6 +392,16 @@ func (in *Intake) SetInvestigation(id string, inv Investigation, status investig
 	return in.commit(change{Kind: changeInvestigation, At: in.cfg.Now().UTC(), ID: id, Investigation: &inv, Status: status})
 }
 
+// SetPost records the state of an incident's outbound message.
+func (in *Intake) SetPost(id string, post Post) error {
+	in.mu.Lock()
+	defer in.mu.Unlock()
+	if _, ok := in.byID[id]; !ok {
+		return fmt.Errorf("no incident %s", id)
+	}
+	return in.commit(change{Kind: changePost, At: in.cfg.Now().UTC(), ID: id, Post: &post})
+}
+
 // Get returns a copy of one incident.
 func (in *Intake) Get(id string) (Record, bool) {
 	in.mu.Lock()
@@ -419,6 +445,11 @@ func copyRecord(r *Record) Record {
 	c.ResolvedAt = copyTime(r.ResolvedAt)
 	c.Investigation.StartedAt = copyTime(r.Investigation.StartedAt)
 	c.Investigation.EndedAt = copyTime(r.Investigation.EndedAt)
+	if r.Post != nil {
+		post := *r.Post
+		post.PostedAt = copyTime(r.Post.PostedAt)
+		c.Post = &post
+	}
 	return c
 }
 

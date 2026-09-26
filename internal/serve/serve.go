@@ -53,6 +53,11 @@ type Config struct {
 	// Logf reports a state change that could not be recorded. The work still
 	// happens; only its record is behind, and a restart re-derives it.
 	Logf func(format string, args ...any)
+	// OnFinished is told when an investigation's outcome has been recorded,
+	// and OnResolved when an incident's alert resolves. Both must not block:
+	// delivery queues its work, it never does it here.
+	OnFinished func(id string)
+	OnResolved func(id string)
 }
 
 // Server holds the queue. Accept is safe to call from HTTP handlers; Run is the
@@ -135,6 +140,9 @@ func (s *Server) record(id string, inv intake.Investigation, status investigatio
 // incident can start an investigation; it is either queued or recorded as rate
 // limited. It never blocks on investigation work.
 func (s *Server) Accept(received intake.Received) {
+	if received.Outcome == intake.OutcomeResolved && s.cfg.OnResolved != nil {
+		s.cfg.OnResolved(received.IncidentID)
+	}
 	if received.Outcome != intake.OutcomeOpened {
 		return
 	}
@@ -289,4 +297,7 @@ func (s *Server) investigate(ctx context.Context, id string) {
 		done.Reason = err.Error()
 	}
 	s.record(id, done, status)
+	if s.cfg.OnFinished != nil {
+		s.cfg.OnFinished(id)
+	}
 }
