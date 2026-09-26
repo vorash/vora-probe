@@ -45,7 +45,10 @@ type relationBuilder struct {
 }
 
 func (b *relationBuilder) add(obsID string, rel Relationship, reason string) {
-	if obsID == "" {
+	// Facts span the whole run, but the arm answers only for the evidence it was
+	// asked about. Labelling anything else duplicates labels the engine already
+	// holds, and the worker state grows with every reassessment.
+	if _, asked := b.obs[obsID]; !asked {
 		return
 	}
 	if b.seen == nil {

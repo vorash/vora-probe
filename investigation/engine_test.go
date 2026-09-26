@@ -159,11 +159,28 @@ func TestInvalidPlannerOutputIsRetriedOnceThenFails(t *testing.T) {
 		t.Fatalf("a retry must consume the same budget; model calls = %d", step2.Envelope.Run.Used.ModelCalls)
 	}
 
-	if _, err := engine.Step(modelInput(step2.Envelope, investigation.ModelResponse{
+	// The rejection is a run outcome the controller can record, not a worker
+	// error that leaves it nothing: a live run that ended this way had only a
+	// journal to explain it.
+	step3, err := engine.Step(modelInput(step2.Envelope, investigation.ModelResponse{
 		SchemaVersion: gateway.SchemaVersion, Reason: "still invalid",
 		Hypotheses: []investigation.HypothesisSpec{{Statement: "one", FaultDomain: investigation.DomainHost, ClaimKind: investigation.ClaimUnknownCause}},
-	})); err == nil {
-		t.Fatal("a second invalid response must reject the run")
+	}))
+	if err != nil {
+		t.Fatalf("a second invalid response must end the run, not the worker: %v", err)
+	}
+	if step3.Kind != investigation.ResultFinal || step3.Run.Status != investigation.RunFailed {
+		t.Fatalf("a second invalid response must reject the run; got %q with status %q", step3.Kind, step3.Run.Status)
+	}
+	if step3.Report != nil {
+		t.Fatal("a rejected run must not publish a report as if it had concluded")
+	}
+	if step3.Envelope.Run.Used.ModelCalls != 2 {
+		t.Fatalf("rejection must not ask the planner a third time; model calls = %d", step3.Envelope.Run.Used.ModelCalls)
+	}
+	last := step3.Envelope.Decisions[len(step3.Envelope.Decisions)-1]
+	if last.Outcome != investigation.OutcomeEscalate || !strings.Contains(last.Reason, "rejected twice") {
+		t.Fatalf("the rejection must be escalated with its reason; last decision = %+v", last)
 	}
 }
 
@@ -341,6 +358,64 @@ func TestOversizePayloadIsTruncatedAndBecomesACoverageGap(t *testing.T) {
 		t.Fatalf("state envelope is %d bytes, over the %d budget", len(raw), budget.MaxEnvelopeBytes)
 	}
 }
+
+// Every reassessment used to re-add the labels of evidence that was already
+// labelled, so relations grew with the square of the run's length. A live run
+// that asked the planner often enough outgrew the worker state budget on its
+// eighth observation and ended as a worker error. Each observation must be
+// labelled for what it is, not once more for every turn that followed it.
+func TestRelationsGrowWithEvidenceNotWithReassessments(t *testing.T) {
+	engine := testEngine(gateway.DefaultPolicy())
+	action := gateway.Action{Kind: gateway.ActionKubernetesContainers, Entity: "payment-api", Reason: "check"}
+	exit := 137
+	payload, err := json.Marshal(gateway.PodList{Namespace: "lab", Pods: []gateway.Pod{{
+		Name: "payment-api-1", Namespace: "lab", Phase: "Running", StartTime: at(12, 0),
+		Containers: []gateway.ContainerStatus{{
+			Name: "app", State: "running", RestartCount: 3,
+			LastTerminatedAt: ptr(at(12, 20)), LastTerminatedReason: "OOMKilled", LastExitCode: &exit,
+		}},
+	}}})
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	answer := gateway.Response{
+		SchemaVersion: gateway.SchemaVersion, Kind: action.Kind, Entity: action.Entity,
+		Status: gateway.StatusOK, Completeness: gateway.Complete, RetrievedAt: at(12, 31),
+		Digest: gateway.Digest(payload), Payload: payload,
+	}
+
+	step, err := engine.Step(investigation.WorkerInput{State: newEnvelope(investigation.DefaultBudgets())})
+	if err != nil {
+		t.Fatalf("step: %v", err)
+	}
+	perObservation := 0
+	const rounds = 6
+	for round := 1; round <= rounds; round++ {
+		if step, err = engine.Step(modelInput(step.Envelope, goodPlan(&action))); err != nil {
+			t.Fatalf("round %d planner turn: %v", round, err)
+		}
+		if step, err = engine.Step(infraInput(step.Envelope, action, answer)); err != nil {
+			t.Fatalf("round %d evidence turn: %v", round, err)
+		}
+		if step.Kind != investigation.ResultModelRequest {
+			t.Fatalf("round %d: expected a planner request, got %q (%s)", round, step.Kind, step.Reason)
+		}
+		got := len(step.Envelope.Relations)
+		if round == 1 {
+			perObservation = got
+			if perObservation == 0 {
+				t.Fatal("the first observation produced no relations, so the test proves nothing")
+			}
+			continue
+		}
+		if want := perObservation * round; got != want {
+			t.Fatalf("after %d observations there are %d relations, want %d: labels are being repeated per reassessment",
+				round, got, want)
+		}
+	}
+}
+
+func ptr[T any](v T) *T { return &v }
 
 // A report that cites evidence it does not have is not publishable.
 func TestReportValidationRejectsInventedEvidence(t *testing.T) {

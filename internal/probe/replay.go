@@ -294,9 +294,6 @@ func runLoop(ctx context.Context, cfg runConfig) (loopResult, error) {
 	if !finished {
 		return loopResult{}, fmt.Errorf("investigation did not terminate within %d steps", maxSteps)
 	}
-	if final.Report == nil {
-		return loopResult{}, fmt.Errorf("run %s ended as %s without a report: %s", cfg.runID, final.Run.Status, final.Reason)
-	}
 
 	// Reap the sandbox before declaring the run finished: run_finished is the
 	// last word on the run, and a resource still alive after it would contradict
@@ -308,6 +305,22 @@ func runLoop(ctx context.Context, cfg runConfig) (loopResult, error) {
 		At: cfg.now(), Payload: mustJSON(final.Run),
 	}); err != nil {
 		return loopResult{}, err
+	}
+
+	if final.Report == nil {
+		// A failed or exhausted run publishes no report, because it did not
+		// conclude. Its final state is still kept, so the decision that ended it
+		// is an artifact rather than something only the journal knows.
+		raw, err := json.MarshalIndent(final.Envelope, "", "  ")
+		if err != nil {
+			return loopResult{}, err
+		}
+		path, err := store.WriteArtifact(cfg.runDir, "state.json", append(raw, '\n'))
+		if err != nil {
+			return loopResult{}, err
+		}
+		return loopResult{}, fmt.Errorf("run %s ended as %s without a report: %s (final state in %s)",
+			cfg.runID, final.Run.Status, final.Reason, path)
 	}
 
 	raw, err := json.MarshalIndent(final.Report, "", "  ")

@@ -287,6 +287,132 @@ func TestReplayStopsWhenTheEvidenceIsNotThere(t *testing.T) {
 	}
 }
 
+// TestRelationsAnswerTheFinalEvidence pins what the published relations are: the
+// rules' labels against the evidence the run ended with, each once. A label kept
+// from before later evidence arrived would state something the report's own
+// evidence contradicts — the positive case used to publish "no configured limit
+// to compare against" beside the limit that proved the kill — and a label
+// repeated per reassessment inflates the counts a reader weighs.
+func TestRelationsAnswerTheFinalEvidence(t *testing.T) {
+	for _, dir := range cases(t) {
+		t.Run(filepath.Base(dir), func(t *testing.T) {
+			var last investigation.StepEnvelope
+			result, err := probe.Replay(context.Background(), probe.ReplayOptions{
+				BundleDir:  dir,
+				OutDir:     t.TempDir(),
+				OnEnvelope: func(env investigation.StepEnvelope) { last = env },
+			})
+			if err != nil {
+				t.Fatalf("replay: %v", err)
+			}
+			evidence := make(map[string]investigation.Observation, len(last.Observations))
+			for _, o := range last.Observations {
+				evidence[o.ID] = o
+			}
+			facts := investigation.BuildFacts(last.Incident.Service, last.Observations)
+			arm := investigation.DeterministicEvaluator{Policy: investigation.DefaultClaimPolicy()}
+
+			want := map[string]int{}
+			for _, h := range result.Report.Hypotheses {
+				drafts, _, err := arm.Label(h.Hypothesis, facts, evidence)
+				if err != nil {
+					t.Fatalf("label %s: %v", h.Hypothesis.ID, err)
+				}
+				for _, d := range drafts {
+					want[relationKey(h.Hypothesis.ID, d.Observation, d.Relationship, d.Reason)]++
+				}
+			}
+			got := map[string]int{}
+			for _, r := range result.Report.Relations {
+				got[relationKey(r.Hypothesis, r.Observation, r.Relationship, r.Reason)]++
+			}
+			for key, n := range got {
+				if want[key] != n {
+					t.Errorf("published %d× but the final evidence gives %d×: %s", n, want[key], key)
+				}
+			}
+			for key, n := range want {
+				if got[key] == 0 {
+					t.Errorf("the final evidence gives %d× but it was not published: %s", n, key)
+				}
+			}
+		})
+	}
+}
+
+func relationKey(hypothesis, observation string, rel investigation.Relationship, reason string) string {
+	return hypothesis + " " + observation + " " + string(rel) + ": " + reason
+}
+
+// TestAnUnfinishedRunKeepsItsStateButPublishesNoReport covers a run that stops
+// before it concludes. It must not publish a report, since that would present a
+// partial investigation as a finding; but it must still close its journal and
+// leave its final state behind, or the reason it stopped is lost with the
+// worker that decided it.
+func TestAnUnfinishedRunKeepsItsStateButPublishesNoReport(t *testing.T) {
+	budget := investigation.DefaultBudgets()
+	budget.MaxInfraCalls = 1
+	out := t.TempDir()
+	_, err := probe.Replay(context.Background(), probe.ReplayOptions{
+		BundleDir: filepath.Join(fixtures.Root(), "oom", "oom-positive"),
+		OutDir:    out,
+		Budget:    budget,
+	})
+	if err == nil || !strings.Contains(err.Error(), "without a report") {
+		t.Fatalf("an exhausted run must be reported as unfinished, got err = %v", err)
+	}
+
+	runDirs, _ := filepath.Glob(filepath.Join(out, "RUN-*"))
+	if len(runDirs) != 1 {
+		t.Fatalf("expected one run directory, found %v", runDirs)
+	}
+	runDir := runDirs[0]
+	if _, err := os.Stat(filepath.Join(runDir, "report.json")); !os.IsNotExist(err) {
+		t.Fatalf("an unfinished run must not write report.json (stat err = %v)", err)
+	}
+
+	statePath := filepath.Join(runDir, "state.json")
+	info, err := os.Stat(statePath)
+	if err != nil {
+		t.Fatalf("the final state was not kept: %v", err)
+	}
+	if info.Mode().Perm() != 0o600 {
+		t.Fatalf("state.json mode = %v, want 0600 like every other artifact", info.Mode().Perm())
+	}
+	raw, err := os.ReadFile(statePath)
+	if err != nil {
+		t.Fatalf("read state: %v", err)
+	}
+	var state investigation.StepEnvelope
+	if err := json.Unmarshal(raw, &state); err != nil {
+		t.Fatalf("state.json is not a state envelope: %v", err)
+	}
+	if state.Run.Status != investigation.RunBudgetExhausted || state.Run.Reason == "" {
+		t.Fatalf("the kept state must say why the run stopped; status = %q reason = %q", state.Run.Status, state.Run.Reason)
+	}
+
+	journal, _ := filepath.Glob(filepath.Join(runDir, "*.journal.jsonl"))
+	if len(journal) != 1 {
+		t.Fatalf("expected one journal, found %v", journal)
+	}
+	lines, err := os.ReadFile(journal[0])
+	if err != nil {
+		t.Fatalf("read journal: %v", err)
+	}
+	all := strings.Split(strings.TrimSpace(string(lines)), "\n")
+	var finished store.Event
+	if err := json.Unmarshal([]byte(all[len(all)-1]), &finished); err != nil {
+		t.Fatalf("last journal line: %v", err)
+	}
+	var run investigation.Run
+	if err := json.Unmarshal(finished.Payload, &run); err != nil {
+		t.Fatalf("run_finished payload: %v", err)
+	}
+	if finished.Kind != store.EventRunFinished || run.Status != investigation.RunBudgetExhausted {
+		t.Fatalf("the journal must close with run_finished as budget_exhausted; got %q as %q", finished.Kind, run.Status)
+	}
+}
+
 func assertObservationTypes(t *testing.T, report investigation.Report, required []string) {
 	t.Helper()
 	present := map[string]bool{}
