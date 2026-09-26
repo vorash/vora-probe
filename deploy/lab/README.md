@@ -96,7 +96,31 @@ investigator:
 | `inject.sh non-oom` | failed liveness probe → restarts that are not memory-driven |
 | `inject.sh rollout` | a real, unrelated deployment change near an impact |
 | `inject.sh drop-metric request_error_rate` | an application metric stops existing |
+| `inject.sh scenario <name> <seed> [dev\|held-out]` | a seeded forecast scenario (below) |
 | `inject.sh reset` | back to idle |
+
+### Forecast scenarios
+
+For foresight (#14), the workload follows a working-set shape drawn from a
+seed. The limit comes from the downward API, so the shape is drawn against the
+ceiling the container really has. The drawn parameters are logged at start as
+`scenario {…}`: that is the recording's ground truth. It goes to the pod log,
+which the investigator's role cannot read, and never to a queryable metric.
+
+| Scenario | Ground truth | Shape |
+| --- | --- | --- |
+| `ramp` | positive | steady climb past the limit, reached within 2h |
+| `slow-leak` | positive | slow climb, a long lead (1.5h to 6h, inside Prometheus' retention) |
+| `ramp-recover` | negative | climbs, then plateaus at 70–86% of the limit |
+| `sawtooth` | negative | climbs and collects on a cycle, under 75% of the limit |
+| `step` | unforeseeable | flat, then past the limit in one step, no warning |
+| `noisy-flat` | negative | flat with jitter |
+
+The `dev` and `held-out` families draw from non-overlapping parameter ranges
+(slope, plateau, amplitude, period, step time, noise), so a held-out result
+measures generalisation, not memory of seeds. `memory-test/scenario_test.go`
+pins every scenario's ground truth for both families across seeds, and runs
+under `make check`.
 
 Missing *memory* evidence is not a fault: the controller asks for a fixed window
 before the workload existed, and the gateway reports `unavailable`. That keeps

@@ -10,10 +10,13 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
+	"math"
 	"net/http"
 	"os"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"sync"
@@ -77,6 +80,38 @@ func main() {
 			}
 		}
 		go s.ramp(mb, 16, time.Duration(stepMS)*time.Millisecond, time.Duration(holdMS)*time.Millisecond, pushMB)
+	}
+	// A forecast scenario follows a seeded working-set shape instead of a
+	// one-off allocation. It replaces HOLD_MB and RAMP_MB rather than adding to
+	// them, so a recording always has exactly one known shape.
+	if name := os.Getenv("SCENARIO"); name != "" {
+		if os.Getenv("HOLD_MB") != "" || os.Getenv("RAMP_MB") != "" {
+			log.Fatal("SCENARIO cannot be combined with HOLD_MB or RAMP_MB")
+		}
+		seed, err := strconv.ParseUint(os.Getenv("SEED"), 10, 64)
+		if err != nil {
+			log.Fatalf("SEED must be an unsigned integer, got %q", os.Getenv("SEED"))
+		}
+		familyName := os.Getenv("FAMILY")
+		if familyName == "" {
+			familyName = "dev"
+		}
+		// The limit comes from the downward API, so the shape is drawn against
+		// the ceiling the container actually has.
+		limitMB, err := strconv.ParseFloat(os.Getenv("MEMORY_LIMIT_MB"), 64)
+		if err != nil {
+			log.Fatalf("MEMORY_LIMIT_MB must be set (downward API), got %q", os.Getenv("MEMORY_LIMIT_MB"))
+		}
+		sh, err := newShape(name, familyName, seed, limitMB)
+		if err != nil {
+			log.Fatal(err)
+		}
+		// The drawn parameters are the recording's ground truth. They go to
+		// the pod log, which the investigator's role cannot read, and never to
+		// a metric it could query.
+		truth, _ := json.Marshal(sh)
+		log.Printf("scenario %s", truth)
+		go s.follow(sh, noiseTick)
 	}
 	if v := os.Getenv("FAIL_LIVENESS_AFTER"); v != "" {
 		d, err := time.ParseDuration(v)
@@ -167,6 +202,36 @@ func (s *state) ramp(totalMB, stepMB int, step, holdMS time.Duration, pushMB int
 	}
 	if pushMB > 0 {
 		s.hold(pushMB)
+	}
+}
+
+// follow holds the working set at the shape's target, one tick at a time.
+func (s *state) follow(sh shape, tick time.Duration) {
+	start := time.Now()
+	for {
+		s.resize(int(math.Round(sh.target(time.Since(start)))))
+		time.Sleep(tick)
+	}
+}
+
+// resize moves the held working set to mb in 1 MiB blocks. Shrinking releases
+// the blocks and returns the memory to the OS, so the working set Prometheus
+// sees actually falls; without that a sawtooth would read as a ramp.
+func (s *state) resize(mb int) {
+	s.mu.Lock()
+	for s.heldMB < mb {
+		s.appendLocked(1)
+	}
+	shrunk := false
+	for s.heldMB > mb && len(s.held) > 0 {
+		last := s.held[len(s.held)-1]
+		s.held = s.held[:len(s.held)-1]
+		s.heldMB -= len(last) >> 20
+		shrunk = true
+	}
+	s.mu.Unlock()
+	if shrunk {
+		debug.FreeOSMemory()
 	}
 }
 
