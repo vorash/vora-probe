@@ -82,6 +82,17 @@ type investigateConfig struct {
 
 	Evaluator string `json:"evaluator"`
 	OutDir    string `json:"out"`
+	// ContextDir holds operator-written context packages (<name>.md) the
+	// planner may read. They are reference, never evidence.
+	ContextDir string `json:"context_dir"`
+}
+
+// contexts is the run's context source, or nil when none is configured.
+func (c investigateConfig) contexts() probe.ContextSource {
+	if c.ContextDir == "" {
+		return nil
+	}
+	return probe.DirContexts{Root: c.ContextDir}
 }
 
 func investigate(args []string) error {
@@ -157,6 +168,7 @@ func investigate(args []string) error {
 		Gateway:     gatewayAdapter,
 		Planner:     planner,
 		EvidenceURL: cfg.Lab.PrometheusUIURL,
+		Contexts:    cfg.contexts(),
 	})
 	// The report is written even when the run fails; print what exists and let
 	// the error speak for itself.

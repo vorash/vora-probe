@@ -299,7 +299,7 @@ func investigator(cfg investigateConfig, planner models.Planner, budget investig
 			}
 			return probe.Run(ctx, probe.RunOptions{
 				Incident: incident, Planner: planner, Gateway: gw, Engine: newEngine(), OutDir: outDir, Budget: budget, Attempt: attempt,
-				EvidenceURL: cfg.Lab.PrometheusUIURL,
+				EvidenceURL: cfg.Lab.PrometheusUIURL, Contexts: cfg.contexts(),
 			})
 		}, "in-process", nil
 	}
@@ -329,6 +329,7 @@ func investigator(cfg investigateConfig, planner models.Planner, budget investig
 			Image: cfg.Worker.Image, Backend: cfg.Worker.Backend, Command: cfg.Worker.Command, Cwd: cfg.Worker.Cwd,
 			TTLSeconds: cfg.Worker.TTLSeconds, StepTimeout: stepTimeout,
 			Engine: newEngine(), Gateway: gw, Planner: planner, EvidenceURL: cfg.Lab.PrometheusUIURL,
+			Contexts: cfg.contexts(),
 		})
 		return result.ReplayResult, err
 	}, "in a Vora sandbox", nil

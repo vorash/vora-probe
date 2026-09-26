@@ -44,7 +44,7 @@ func Step(engine *investigation.Engine, input []byte, maxEnvelopeBytes, maxRespo
 		return nil, err
 	}
 	switch result.Kind {
-	case investigation.ResultModelRequest, investigation.ResultInfraRequest, investigation.ResultFinal:
+	case investigation.ResultModelRequest, investigation.ResultInfraRequest, investigation.ResultContextRequest, investigation.ResultFinal:
 	default:
 		return nil, fmt.Errorf("worker produced an unknown result kind %q", result.Kind)
 	}

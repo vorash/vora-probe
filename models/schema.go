@@ -17,7 +17,7 @@ import (
 // an action kind does not use is present as null rather than omitted. The
 // engine's own validation still runs on every reply: the schema narrows what
 // can arrive, it does not replace the contract.
-func PlannerResponseSchema(offered []gateway.ActionKind) map[string]any {
+func PlannerResponseSchema(offered []gateway.ActionKind, contexts []string) map[string]any {
 	str := map[string]any{"type": "string"}
 	nullable := func(s map[string]any) map[string]any {
 		return map[string]any{"anyOf": []any{s, map[string]any{"type": "null"}}}
@@ -58,10 +58,17 @@ func PlannerResponseSchema(offered []gateway.ActionKind) map[string]any {
 		"resolution": nullable(str),
 		"filter":     nullable(enum(gateway.LogFilterNames())),
 	})
+	// read_context names only a package still to be read; with none, it can
+	// only be null.
+	readContext := map[string]any{"type": "null"}
+	if len(contexts) > 0 {
+		readContext = nullable(enum(contexts))
+	}
 	return object(map[string]any{
-		"hypotheses":  map[string]any{"type": "array", "items": hypothesis},
-		"next_action": nullable(action),
-		"reason":      str,
+		"hypotheses":   map[string]any{"type": "array", "items": hypothesis},
+		"next_action":  nullable(action),
+		"reason":       str,
+		"read_context": readContext,
 	})
 }
 

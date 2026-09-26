@@ -204,6 +204,8 @@ type LiveOptions struct {
 	Incident *investigation.Incident
 	// EvidenceURL is the Prometheus UI a human opens evidence in.
 	EvidenceURL string
+	// Contexts are reference packages the planner may read; nil means none.
+	Contexts ContextSource
 }
 
 type LiveResult struct {
@@ -370,6 +372,7 @@ func Investigate(ctx context.Context, opts LiveOptions) (LiveResult, error) {
 		onCreate:    onCreate,
 		onDestroy:   onDestroy,
 		evidenceURL: opts.EvidenceURL,
+		contexts:    opts.Contexts,
 	})
 
 	live := LiveResult{

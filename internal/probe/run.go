@@ -28,6 +28,8 @@ type RunOptions struct {
 	// EvidenceURL is the Prometheus UI a human opens evidence in; see
 	// gateway.PrometheusGraphURL.
 	EvidenceURL string
+	// Contexts are reference packages the planner may read; nil means none.
+	Contexts ContextSource
 }
 
 // Run investigates one incident in-process against live time. Like Replay and
@@ -85,6 +87,7 @@ func Run(ctx context.Context, opts RunOptions) (ReplayResult, error) {
 		incident:    opts.Incident,
 		runner:      inProcessRunner(engine, budget),
 		evidenceURL: opts.EvidenceURL,
+		contexts:    opts.Contexts,
 	})
 	if err != nil && !errors.Is(err, ErrNotConcluded) {
 		return ReplayResult{JournalPath: journal.Path()}, err

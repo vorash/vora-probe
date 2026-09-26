@@ -12,7 +12,7 @@ import (
 const validReply = `{"hypotheses":[
 	{"statement":"killed at its limit","fault_domain":"kubernetes","claim_kind":"memory_limit_termination","evidence_needed":[]},
 	{"statement":"restarts for another reason","fault_domain":"application","claim_kind":"non_memory_restart","evidence_needed":[]}],
-	"next_action":null,"reason":"enough"}`
+	"next_action":null,"reason":"enough","read_context":null}`
 
 type stubPlanner struct {
 	resp  investigation.ModelResponse

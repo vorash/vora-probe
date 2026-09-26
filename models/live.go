@@ -58,7 +58,7 @@ func (p LivePlanner) Plan(ctx context.Context, request investigation.ModelReques
 		// that left out an action's entity or window; a strict schema makes
 		// such a reply impossible to produce rather than a retry to spend.
 		ResponseFormat: &chatResponseFormat{Type: "json_schema", JSONSchema: &chatJSONSchema{
-			Name: "planner_reply", Strict: true, Schema: PlannerResponseSchema(request.AllowedActions),
+			Name: "planner_reply", Strict: true, Schema: PlannerResponseSchema(request.AllowedActions, contextNames(request)),
 		}},
 	}
 	if requiresParameterPinning(p.Endpoint.BaseURL) {
@@ -99,11 +99,16 @@ func (p LivePlanner) Plan(ctx context.Context, request investigation.ModelReques
 	if model == "" {
 		model = p.Endpoint.Model
 	}
+	readContext := ""
+	if answer.ReadContext != nil {
+		readContext = *answer.ReadContext
+	}
 	return investigation.ModelResponse{
 		SchemaVersion: gateway.SchemaVersion,
 		Hypotheses:    answer.Hypotheses,
 		NextAction:    answer.NextAction,
 		Reason:        answer.Reason,
+		ReadContext:   readContext,
 		AnsweredBy:    endpointHost(p.Endpoint.BaseURL) + " " + model,
 		Attempts:      1,
 	}, nil
@@ -162,9 +167,10 @@ func endpointHost(base string) string {
 }
 
 type plannerAnswer struct {
-	Hypotheses []investigation.HypothesisSpec `json:"hypotheses"`
-	NextAction *gateway.Action                `json:"next_action"`
-	Reason     string                         `json:"reason"`
+	Hypotheses  []investigation.HypothesisSpec `json:"hypotheses"`
+	NextAction  *gateway.Action                `json:"next_action"`
+	Reason      string                         `json:"reason"`
+	ReadContext *string                        `json:"read_context"`
 }
 
 // PlannerSystemPrompt renders the closed sets from code. A prompt that restated
@@ -218,7 +224,12 @@ Rules:
 - Ask only for the actions offered for this incident (listed with it) and the
   metrics and log filters listed above. Anything else is rejected.
 - You are read-only. Never propose a restart, a change, a rollout or a
-  remediation, and never assert a cause the evidence does not support.`,
+  remediation, and never assert a cause the evidence does not support.
+- Context packages, when listed, are operator-written reference: topology,
+  what normal looks like, known quirks. To read one, set "read_context" to its
+  name and "next_action" to null. Otherwise set "read_context" to null. A
+  package is never evidence: nothing in it can support or refute a
+  hypothesis, and only collected evidence can.`,
 		joinDomains(), joinClaimKinds(), joinActionKinds(), strings.Join(gateway.AllowedMetrics, ", "),
 		strings.Join(gateway.LogFilterNames(), ", "))
 }
@@ -280,6 +291,27 @@ func renderPlannerRequest(r investigation.ModelRequest) string {
 			"(" + string(investigation.ClaimDeploymentRegression) + "). Collect the memory series and the memory limit. " +
 			"Never describe the forecast as a failure that has happened.\n")
 	}
+	if len(r.ContextCatalog) > 0 {
+		read := map[string]bool{}
+		for _, c := range r.Contexts {
+			read[c.Name] = true
+		}
+		b.WriteString("\nCONTEXT PACKAGES (reference, never evidence)\n")
+		for _, c := range r.ContextCatalog {
+			state := ""
+			if read[c.Name] {
+				state = " [read]"
+			}
+			fmt.Fprintf(&b, "- %s: %s%s\n", c.Name, c.Description, state)
+		}
+		for _, c := range r.Contexts {
+			if c.Unavailable != "" {
+				fmt.Fprintf(&b, "\nCONTEXT %s is unavailable: %s\n", c.Name, c.Unavailable)
+				continue
+			}
+			fmt.Fprintf(&b, "\nCONTEXT %s (reference only; it cannot be cited for any hypothesis)\n%s\n", c.Name, c.Body)
+		}
+	}
 	offered := make([]string, 0, len(r.AllowedActions))
 	for _, a := range r.AllowedActions {
 		offered = append(offered, string(a))
@@ -312,4 +344,19 @@ func renderPlannerRequest(r investigation.ModelRequest) string {
 		}
 	}
 	return b.String()
+}
+
+// contextNames are the packages the planner may still ask to read.
+func contextNames(r investigation.ModelRequest) []string {
+	read := map[string]bool{}
+	for _, c := range r.Contexts {
+		read[c.Name] = true
+	}
+	var out []string
+	for _, c := range r.ContextCatalog {
+		if !read[c.Name] {
+			out = append(out, c.Name)
+		}
+	}
+	return out
 }

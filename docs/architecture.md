@@ -355,6 +355,28 @@ competing hypotheses and the evidence to collect first, as guidance: it still
 proposes what it judges, and the claims policy is the same for every class. A
 class never makes a conclusion admissible.
 
+## Context packages
+
+`context_dir` names a directory of operator-written reference: each
+`<name>.md`, whose first line is its description and the rest its body
+(topology, what normal looks like, known quirks). The controller reads the
+catalog at the start of a run and puts it in the state, because the worker has
+no filesystem. The planner sees names and descriptions, and asks for a body with
+`read_context`. That is not an infrastructure action and never goes to the
+gateway.
+
+**Context is not evidence.** A package is its own record type (`Context`),
+never an `Observation`. No fact, relation or claim is built on it, and a claim
+that cites it cites nothing the policy recognises, so it is refused like any
+unretained evidence. Reports list the packages consulted in their own section,
+apart from the evidence.
+
+Loading is bounded. A name must match `^[a-z0-9][a-z0-9-]{0,62}$`, so it has no
+separators and no dots. The resolved path must stay inside the directory, so a
+symlink that points out is refused. Only regular files are read, a body is at
+most 8 KiB and redacted, a run may read at most three packages, and each read
+is charged to the infrastructure-call budget.
+
 ## Logs
 
 `logs.query` is a closed action. The model names one filter from
