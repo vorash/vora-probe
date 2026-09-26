@@ -320,6 +320,15 @@ because OpenRouter otherwise silently drops a parameter a provider does not
 support. The engine still validates every reply: the schema narrows what can
 arrive, it does not replace the contract.
 
+A second planner endpoint (`VORA_PROBE_MODEL_FALLBACK_*`, with its own timeout)
+is tried when the first fails: a transport error, a timeout, a non-2xx status,
+or an unreadable reply. It is never tried once the run's deadline has passed.
+Every attempt is charged to the model-call budget, so a fallback is never free
+and cannot loop. The trace records, on every planner call, the endpoint and the
+model the provider says answered, and why an earlier endpoint was passed over.
+The fallback is for the planner alone. An evaluator arm under comparison is
+reported as failed, never substituted.
+
 Every run publishes a report, whatever its status. A run that ends `failed` or
 `budget_exhausted` gets a report that does not conclude: code builds it from
 the state, it records the hypotheses, evidence, gaps, decisions and trace, and

@@ -117,7 +117,7 @@ func investigate(args []string) error {
 
 	// A live run plans with a model. This is the same OpenAI-compatible endpoint
 	// the baseline arm uses, so one credential configures both.
-	planner := models.LivePlanner{Endpoint: models.ConfigFromEnv().Baseline, MaxResponseBytes: 1 << 20}
+	planner := models.PlannerFromConfig(models.ConfigFromEnv())
 
 	arm, err := evaluatorArm(cfg.Evaluator)
 	if err != nil {

@@ -47,6 +47,8 @@ usage:
 
 endpoints are run configuration, not build-time constants:
   VORA_PROBE_MODEL_BASE_URL, VORA_PROBE_MODEL_API_KEY, VORA_PROBE_MODEL, VORA_PROBE_MODEL_MAX_OUTPUT_TOKENS
+  VORA_PROBE_MODEL_FALLBACK_BASE_URL, _API_KEY, _MODEL (VORA_PROBE_MODEL_FALLBACK), _TIMEOUT
+      a second planner endpoint, tried when the first fails; never used for an evaluator arm
   VORA_PROBE_JEV_BASE_URL, VORA_PROBE_JEV_API_KEY, VORA_PROBE_JEV_MODEL
 `
 

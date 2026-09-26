@@ -138,6 +138,17 @@ type ModelResponse struct {
 	Hypotheses    []HypothesisSpec `json:"hypotheses"`
 	NextAction    *gateway.Action  `json:"next_action,omitempty"`
 	Reason        string           `json:"reason"`
+
+	// The fields below are set by the planner client, never by the model: its
+	// reply is decoded into the three fields above alone.
+
+	// AnsweredBy names the endpoint and the model the provider says answered.
+	AnsweredBy string `json:"answered_by,omitempty"`
+	// Attempts is how many provider calls this reply cost, fallbacks
+	// included. Every one is charged to the model-call budget.
+	Attempts int `json:"attempts,omitempty"`
+	// FallbackReasons are why each earlier endpoint was passed over.
+	FallbackReasons []string `json:"fallback_reasons,omitempty"`
 }
 
 // Validate enforces the planner contract. Invalid output is retried once and
