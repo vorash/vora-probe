@@ -15,7 +15,7 @@ import (
 // LivePlannerPromptVersion identifies the planner prompt and the reply shape it
 // asks for. It is recorded with a run so a benchmark can never mix two prompts
 // without saying so.
-const LivePlannerPromptVersion = "planner-prompt/v1"
+const LivePlannerPromptVersion = "planner-prompt/v2"
 
 // LivePlanner is the model-driven planner: it proposes competing hypotheses and
 // chooses the next piece of evidence to collect.
@@ -45,16 +45,25 @@ func (p LivePlanner) Plan(ctx context.Context, request investigation.ModelReques
 	if transport == nil {
 		transport = NewHTTPTransport(p.Endpoint.Timeout)
 	}
-	body, err := json.Marshal(chatRequest{
+	req := chatRequest{
 		Model: p.Endpoint.Model,
 		Messages: []chatMessage{
 			{Role: "system", Content: PlannerSystemPrompt()},
 			{Role: "user", Content: renderPlannerRequest(request)},
 		},
-		MaxTokens:      p.Endpoint.MaxOutputTokens,
-		Temperature:    0,
-		ResponseFormat: &chatResponseFormat{Type: "json_object"},
-	})
+		MaxTokens:   p.Endpoint.MaxOutputTokens,
+		Temperature: 0,
+		// The provider enforces the reply's shape. Lab runs failed on replies
+		// that left out an action's entity or window; a strict schema makes
+		// such a reply impossible to produce rather than a retry to spend.
+		ResponseFormat: &chatResponseFormat{Type: "json_schema", JSONSchema: &chatJSONSchema{
+			Name: "planner_reply", Strict: true, Schema: PlannerResponseSchema(),
+		}},
+	}
+	if requiresParameterPinning(p.Endpoint.BaseURL) {
+		req.Provider = &providerPrefs{RequireParameters: true}
+	}
+	body, err := json.Marshal(req)
 	if err != nil {
 		return investigation.ModelResponse{}, err
 	}
@@ -136,8 +145,8 @@ Rules:
   {"kind":"metrics.query","entity":"<service>","reason":"<why>",
    "metric":"container_memory_working_set_bytes",
    "window":{"start":"<RFC3339 UTC>","end":"<RFC3339 UTC>"},"resolution":"30s"}
-  The window may span at most one hour. Other action kinds take no metric,
-  window or resolution.
+  The window may span at most one hour. Other action kinds set "metric",
+  "window" and "resolution" to null.
 - A missing, empty or malformed required field is rejected, and the whole reply
   with it. Do not omit a field to save space: an action is all of its fields or
   it is nothing.
