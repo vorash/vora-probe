@@ -10,6 +10,8 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -127,7 +129,7 @@ func (h *harness) run(t *testing.T) func() {
 // investigation, not N.
 func TestABurstOfDuplicateAlertsYieldsOneInvestigation(t *testing.T) {
 	var calls atomic.Int32
-	investigate := func(_ context.Context, incident investigation.Incident) (probe.ReplayResult, error) {
+	investigate := func(_ context.Context, incident investigation.Incident, _ int) (probe.ReplayResult, error) {
 		calls.Add(1)
 		return probe.ReplayResult{Report: investigation.Report{Run: investigation.Run{Status: investigation.RunCompleted}}}, nil
 	}
@@ -167,7 +169,7 @@ func TestAStalledPlannerFreesTheQueueAndLeavesAReport(t *testing.T) {
 	}
 	out := t.TempDir()
 	var calls atomic.Int32
-	investigate := func(ctx context.Context, incident investigation.Incident) (probe.ReplayResult, error) {
+	investigate := func(ctx context.Context, incident investigation.Incident, attempt int) (probe.ReplayResult, error) {
 		gw, err := gateway.NewFixtureGateway(gateway.DefaultPolicy(), bundle.Evidence, nil)
 		if err != nil {
 			return probe.ReplayResult{}, err
@@ -176,7 +178,7 @@ func TestAStalledPlannerFreesTheQueueAndLeavesAReport(t *testing.T) {
 		if calls.Add(1) == 1 {
 			planner = stalled{}
 		}
-		return probe.Run(ctx, probe.RunOptions{Incident: incident, Planner: planner, Gateway: gw, OutDir: out})
+		return probe.Run(ctx, probe.RunOptions{Incident: incident, Planner: planner, Gateway: gw, OutDir: out, Attempt: attempt})
 	}
 	h := newHarness(t, DefaultLimits(), 300*time.Millisecond, investigate, time.Now)
 	wait := h.run(t)
@@ -209,7 +211,7 @@ func TestAStalledPlannerFreesTheQueueAndLeavesAReport(t *testing.T) {
 // limited with the reason, never dropped.
 func TestExcessIncidentsAreRecordedAsRateLimited(t *testing.T) {
 	var calls atomic.Int32
-	investigate := func(_ context.Context, _ investigation.Incident) (probe.ReplayResult, error) {
+	investigate := func(_ context.Context, _ investigation.Incident, _ int) (probe.ReplayResult, error) {
 		calls.Add(1)
 		return probe.ReplayResult{}, nil
 	}
@@ -265,7 +267,7 @@ func TestExcessIncidentsAreRecordedAsRateLimited(t *testing.T) {
 // A run that could not produce any report is still an outcome of the incident,
 // recorded with its reason.
 func TestAnInvestigationThatCannotReportIsRecordedAsAnError(t *testing.T) {
-	investigate := func(_ context.Context, _ investigation.Incident) (probe.ReplayResult, error) {
+	investigate := func(_ context.Context, _ investigation.Incident, _ int) (probe.ReplayResult, error) {
 		return probe.ReplayResult{}, errors.New("journal could not be opened")
 	}
 	h := newHarness(t, DefaultLimits(), time.Minute, investigate, time.Now)
@@ -280,7 +282,7 @@ func TestAnInvestigationThatCannotReportIsRecordedAsAnError(t *testing.T) {
 
 func TestTheServerRefusesAnUnboundedConfiguration(t *testing.T) {
 	in := intake.New(intake.DefaultConfig())
-	noop := func(context.Context, investigation.Incident) (probe.ReplayResult, error) {
+	noop := func(context.Context, investigation.Incident, int) (probe.ReplayResult, error) {
 		return probe.ReplayResult{}, nil
 	}
 	for name, cfg := range map[string]Config{
@@ -314,4 +316,116 @@ func recordedTurns(b fixtures.Bundle) []investigation.ModelResponse {
 		out = append(out, r)
 	}
 	return out
+}
+
+type call struct {
+	service string
+	attempt int
+}
+
+// restart simulates the server process dying and starting again on the same
+// incident log: the old intake is closed without any orderly shutdown, and a
+// new intake and server are built from what is on disk.
+func restart(t *testing.T, path string, limits Limits, investigate Investigator, now func() time.Time) (*intake.Intake, *Server) {
+	t.Helper()
+	cfg := intake.DefaultConfig()
+	cfg.Now = now
+	in, err := intake.Open(cfg, path)
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	t.Cleanup(func() { in.Close() })
+	srv, err := New(Config{Intake: in, Investigate: investigate, Limits: limits, Timeout: time.Minute, Now: now})
+	if err != nil {
+		t.Fatalf("new: %v", err)
+	}
+	return in, srv
+}
+
+func accept(t *testing.T, in *intake.Intake, srv *Server, body []byte) intake.Received {
+	t.Helper()
+	n, err := intake.Parse(body)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	got, err := in.Receive(n, body)
+	if err != nil {
+		t.Fatalf("receive: %v", err)
+	}
+	srv.Accept(got)
+	return got
+}
+
+// A restart must not lose work. Queued incidents resume in the order they
+// arrived, and an incident whose run was cut off by the restart runs again as
+// its next attempt — a new journal, the interrupted one kept — with the reason
+// on its record.
+func TestQueuedAndInterruptedIncidentsResumeAfterARestart(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "incidents.jsonl")
+	now := func() time.Time { return time.Date(2026, 9, 26, 12, 0, 0, 0, time.UTC) }
+	idle := func(context.Context, investigation.Incident, int) (probe.ReplayResult, error) {
+		t.Error("nothing may run before the restart")
+		return probe.ReplayResult{}, nil
+	}
+	in, srv := restart(t, path, DefaultLimits(), idle, now)
+	start := now().Add(-10 * time.Minute)
+	first := accept(t, in, srv, notification("group-1", "payment-api", "pod-1", start))
+	second := accept(t, in, srv, notification("group-2", "checkout-api", "pod-2", start.Add(time.Minute)))
+	// The first incident's run had started when the process died.
+	running := intake.Investigation{State: intake.InvestigationRunning, Attempt: 1}
+	if err := in.SetInvestigation(first.IncidentID, running, investigation.IncidentInvestigating); err != nil {
+		t.Fatalf("set: %v", err)
+	}
+	in.Close()
+
+	var mu sync.Mutex
+	var calls []call
+	record := func(_ context.Context, incident investigation.Incident, attempt int) (probe.ReplayResult, error) {
+		mu.Lock()
+		calls = append(calls, call{incident.Service, attempt})
+		mu.Unlock()
+		return probe.ReplayResult{}, nil
+	}
+	in, srv = restart(t, path, DefaultLimits(), record, now)
+	resumed, _ := in.Get(first.IncidentID)
+	if resumed.Investigation.State != intake.InvestigationQueued || resumed.Investigation.Attempt != 2 ||
+		!strings.Contains(resumed.Investigation.Reason, "interrupted") {
+		t.Fatalf("the interrupted incident after restart: %+v, want queued as attempt 2 with the reason", resumed.Investigation)
+	}
+	h := &harness{intake: in, server: srv}
+	wait := h.run(t)
+	wait()
+
+	want := []call{{"payment-api", 2}, {"checkout-api", 1}}
+	if !reflect.DeepEqual(calls, want) {
+		t.Fatalf("runs after restart = %v, want %v: arrival order, and the interrupted run as its next attempt", calls, want)
+	}
+	for _, id := range []string{first.IncidentID, second.IncidentID} {
+		if r, _ := in.Get(id); r.Investigation.State != intake.InvestigationConcluded {
+			t.Fatalf("%s after restart: state %q, want concluded", id, r.Investigation.State)
+		}
+	}
+}
+
+// Rate limits are rebuilt from the records. Otherwise a restart would reset
+// every window, and a flapping alert would start fresh runs after each one.
+func TestRateLimitsSurviveARestart(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "incidents.jsonl")
+	now := func() time.Time { return time.Date(2026, 9, 26, 12, 0, 0, 0, time.UTC) }
+	noop := func(context.Context, investigation.Incident, int) (probe.ReplayResult, error) {
+		return probe.ReplayResult{}, nil
+	}
+	limits := Limits{Window: time.Hour, PerGroup: 1, PerEntity: 10}
+
+	in, srv := restart(t, path, limits, noop, now)
+	at := now().Add(-30 * time.Minute)
+	accept(t, in, srv, notification("flapping", "payment-api", "pod-1", at))
+	accept(t, in, srv, resolution("flapping", at))
+	in.Close()
+
+	in, srv = restart(t, path, limits, noop, now)
+	again := accept(t, in, srv, notification("flapping", "payment-api", "pod-1", at.Add(10*time.Minute)))
+	if r, _ := in.Get(again.IncidentID); r.Investigation.State != intake.InvestigationRateLimited {
+		t.Fatalf("the group's second firing within the window after a restart: state %q, want rate_limited", r.Investigation.State)
+	}
 }

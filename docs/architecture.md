@@ -148,8 +148,19 @@ record tracks `queued`, `rate_limited`, `investigating`, `concluded`,
 path. The worker runs in-process by default (`probe.Run`), or in a Vora sandbox
 when the config names a Vora API. The server refuses to start without a bearer
 token, a planner endpoint, a deadline, or positive rate limits. It listens on
-`127.0.0.1:9480` unless told otherwise. Incidents are held in memory until the
-incident store (P1.3) persists them.
+`127.0.0.1:9480` unless told otherwise.
+
+Intake's state is an append-only log, `<out>/incidents.jsonl` (0600, one
+writer, enforced by a lock). Every change is one typed line, synced before it
+is applied or acknowledged: a failed write answers `5xx`, which Alertmanager
+retries, so nothing acknowledged is lost. On start the log is replayed through
+the same code live changes use, so dedupe keys and open groups survive a
+restart. A final line without its newline is a write that never finished and
+was never acknowledged, so it is cut off; a corrupt line anywhere else refuses
+to load. The server then rebuilds its queue and rate-limit windows from the
+records: queued incidents resume in arrival order, and one whose run was cut off
+runs again as its next attempt, with a new journal, the old one kept, and the
+reason on the record.
 
 ## Determinism
 
@@ -197,8 +208,9 @@ deadline (`budget_exhausted`), or a request is refused, or the worker or its
 sandbox fails (`failed`). `Engine.Abandon` closes the run from the last state
 the controller holds, records the cause as an escalation, and publishes that
 report. The cause is kept in the returned error, so an interrupted worker is
-still `ErrInterrupted`. Only a controller that dies outright leaves no report;
-its journal still shows the unanswered request.
+still `ErrInterrupted`. Only a controller that dies outright leaves no report
+for that attempt: its journal still shows the unanswered request, and in server
+mode the incident runs again as its next attempt when the server restarts.
 
 ## Policy layers
 

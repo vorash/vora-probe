@@ -105,7 +105,13 @@ func serveCommand(args []string) error {
 	if len(cfg.Serve.ServiceLabels) > 0 {
 		intakeCfg.ServiceLabels = cfg.Serve.ServiceLabels
 	}
-	in := intake.New(intakeCfg)
+	// Incidents are an append-only log beside the run journals. Restarting on
+	// the same out dir resumes the queue: nothing acknowledged is lost.
+	in, err := intake.Open(intakeCfg, filepath.Join(outDir, "incidents.jsonl"))
+	if err != nil {
+		return err
+	}
+	defer in.Close()
 
 	limits := serve.DefaultLimits()
 	if rl := cfg.Serve.RateLimit; rl != nil {
@@ -126,6 +132,9 @@ func serveCommand(args []string) error {
 		// The deadline is the run's own wall-clock budget: a stalled planner
 		// is closed with a report at the same point the engine would stop.
 		Timeout: time.Duration(budget.MaxDurationSeconds) * time.Second,
+		Logf: func(format string, args ...any) {
+			fmt.Fprintf(os.Stderr, format+"\n", args...)
+		},
 	})
 	if err != nil {
 		return err
@@ -164,14 +173,14 @@ func serveCommand(args []string) error {
 	}
 	// Stop accepting first, then let the worker close the run in progress; that
 	// run is abandoned with a report like any other the controller cannot
-	// finish. Incidents still queued are in memory only until the incident
-	// store (P1.3) persists them.
+	// finish. Incidents still queued stay queued in the log and resume on the
+	// next start.
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	_ = httpServer.Shutdown(shutdownCtx)
 	<-worker
 	if queued := server.Queued(); len(queued) > 0 {
-		fmt.Fprintf(os.Stderr, "vora-probe serve: stopped with %d incidents still queued: %v\n", len(queued), queued)
+		fmt.Fprintf(os.Stderr, "vora-probe serve: stopped with %d incidents queued; they resume on the next start: %v\n", len(queued), queued)
 	}
 	return nil
 }
@@ -181,13 +190,13 @@ func serveCommand(args []string) error {
 // network-denied sandbox, the hardened mode.
 func investigator(cfg serveConfig, planner models.Planner, budget investigation.Budgets, outDir string, newEngine func() *investigation.Engine) (serve.Investigator, string, error) {
 	if cfg.Vora.BaseURL == "" {
-		return func(ctx context.Context, incident investigation.Incident) (probe.ReplayResult, error) {
+		return func(ctx context.Context, incident investigation.Incident, attempt int) (probe.ReplayResult, error) {
 			gw, err := cfg.labGateway()
 			if err != nil {
 				return probe.ReplayResult{}, err
 			}
 			return probe.Run(ctx, probe.RunOptions{
-				Incident: incident, Planner: planner, Gateway: gw, Engine: newEngine(), OutDir: outDir, Budget: budget,
+				Incident: incident, Planner: planner, Gateway: gw, Engine: newEngine(), OutDir: outDir, Budget: budget, Attempt: attempt,
 			})
 		}, "in-process", nil
 	}
@@ -207,13 +216,13 @@ func investigator(cfg serveConfig, planner models.Planner, budget investigation.
 	if err != nil {
 		return nil, "", err
 	}
-	return func(ctx context.Context, incident investigation.Incident) (probe.ReplayResult, error) {
+	return func(ctx context.Context, incident investigation.Incident, attempt int) (probe.ReplayResult, error) {
 		gw, err := cfg.labGateway()
 		if err != nil {
 			return probe.ReplayResult{}, err
 		}
 		result, err := probe.Investigate(ctx, probe.LiveOptions{
-			Client: client, Incident: &incident, OutDir: outDir, Budget: budget,
+			Client: client, Incident: &incident, OutDir: outDir, Budget: budget, Attempt: attempt,
 			Image: cfg.Worker.Image, Backend: cfg.Worker.Backend, Command: cfg.Worker.Command, Cwd: cfg.Worker.Cwd,
 			TTLSeconds: cfg.Worker.TTLSeconds, StepTimeout: stepTimeout,
 			Engine: newEngine(), Gateway: gw, Planner: planner,
