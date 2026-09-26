@@ -429,3 +429,44 @@ func TestRateLimitsSurviveARestart(t *testing.T) {
 		t.Fatalf("the group's second firing within the window after a restart: state %q, want rate_limited", r.Investigation.State)
 	}
 }
+
+// Delivery reads the incident's record, so it must be told only after the
+// outcome is recorded; and a resolution must reach it even though it starts no
+// investigation.
+func TestDeliveryIsToldAfterTheOutcomeIsRecordedAndOnResolution(t *testing.T) {
+	in := intake.New(intake.DefaultConfig())
+	var mu sync.Mutex
+	var finishedStates []intake.InvestigationState
+	var resolved []string
+	noop := func(context.Context, investigation.Incident, int) (probe.ReplayResult, error) {
+		return probe.ReplayResult{}, nil
+	}
+	srv, err := New(Config{
+		Intake: in, Investigate: noop, Limits: DefaultLimits(), Timeout: time.Minute,
+		OnFinished: func(id string) {
+			r, _ := in.Get(id)
+			mu.Lock()
+			finishedStates = append(finishedStates, r.Investigation.State)
+			mu.Unlock()
+		},
+		OnResolved: func(id string) { mu.Lock(); resolved = append(resolved, id); mu.Unlock() },
+	})
+	if err != nil {
+		t.Fatalf("new: %v", err)
+	}
+	start := time.Now().Add(-10 * time.Minute)
+	opened := accept(t, in, srv, notification("g", "payment-api", "pod", start))
+	h := &harness{intake: in, server: srv}
+	wait := h.run(t)
+	wait()
+	accept(t, in, srv, resolution("g", start))
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(finishedStates) != 1 || finishedStates[0] != intake.InvestigationConcluded {
+		t.Fatalf("OnFinished saw %v, want one call after the outcome was recorded", finishedStates)
+	}
+	if len(resolved) != 1 || resolved[0] != opened.IncidentID {
+		t.Fatalf("OnResolved = %v, want %s", resolved, opened.IncidentID)
+	}
+}

@@ -162,6 +162,33 @@ records: queued incidents resume in arrival order, and one whose run was cut off
 runs again as its next attempt, with a new journal, the old one kept, and the
 reason on the record.
 
+### Delivery
+
+With a `serve.slack` block, every finished incident is posted by
+`internal/deliver`, from a queue of its own, so posting never blocks the webhook
+or the investigation worker.
+
+- **Routing is code.** The channel and label come from the run's outcome and the
+  alert's severity: `finding: <claim>`, `inconclusive`,
+  `not concluded (<status>)` or `no report`. Critical alerts go to a critical
+  channel when one is configured. A model never decides where, or whether,
+  something is posted.
+- **The message keeps what makes the report worth reading.** It shows the
+  environment on every message, the symptom, the leading claim with its
+  evidence IDs, every refused claim with its narrowed form, the missing
+  evidence, and the recommendation with its execution status. A run that did
+  not conclude says so and recommends nothing. Alert text is escaped, so a rule's
+  summary cannot mention `@channel` or disguise a link. Sections and blocks are
+  bounded to Slack's limits, and truncation says so.
+- **Idempotent.** The first post's `ts` is stored on the incident, in the
+  incident log. A retry, a duplicate trigger or a restart that finds it does not
+  post again. A resolution after the post is a reply in its thread. A report
+  posted after the alert resolved says so, and nothing follows.
+- **Never fails an investigation.** The report is on disk before anything is
+  posted. A post is attempted a bounded number of times (3, honouring Slack's
+  `Retry-After`) and paced at one per second. A post that still fails is
+  recorded with its error and retried on the next start.
+
 ## Determinism
 
 Replay is byte-identical across runs, which is what makes a saved report worth

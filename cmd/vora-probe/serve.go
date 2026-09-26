@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/vorash/vora-probe/gateway"
+	"github.com/vorash/vora-probe/internal/deliver"
 	"github.com/vorash/vora-probe/internal/intake"
 	"github.com/vorash/vora-probe/internal/probe"
 	"github.com/vorash/vora-probe/internal/serve"
@@ -41,6 +42,13 @@ type serveConfig struct {
 			PerGroup  int    `json:"per_group"`
 			PerEntity int    `json:"per_entity"`
 		} `json:"rate_limit"`
+		// Slack, when set, posts every finished incident's report. Without it
+		// reports stay on disk and in GET /incidents only.
+		Slack *struct {
+			TokenFile       string `json:"token_file"`
+			Channel         string `json:"channel"`
+			CriticalChannel string `json:"critical_channel"`
+		} `json:"slack"`
 	} `json:"serve"`
 }
 
@@ -125,16 +133,29 @@ func serveCommand(args []string) error {
 			limits.PerEntity = rl.PerEntity
 		}
 	}
+	logf := func(format string, args ...any) { fmt.Fprintf(os.Stderr, format+"\n", args...) }
+	var deliverer *deliver.Deliverer
+	if sl := cfg.Serve.Slack; sl != nil {
+		deliverer, err = deliver.New(deliver.Config{
+			Intake:   in,
+			Poster:   &deliver.SlackClient{Token: mustReadSecret(sl.TokenFile, "slack bot token")},
+			Channels: deliver.Channels{Default: sl.Channel, Critical: sl.CriticalChannel},
+			Logf:     logf,
+		})
+		if err != nil {
+			return err
+		}
+	}
 	server, err := serve.New(serve.Config{
 		Intake:      in,
 		Investigate: investigate,
 		Limits:      limits,
 		// The deadline is the run's own wall-clock budget: a stalled planner
 		// is closed with a report at the same point the engine would stop.
-		Timeout: time.Duration(budget.MaxDurationSeconds) * time.Second,
-		Logf: func(format string, args ...any) {
-			fmt.Fprintf(os.Stderr, format+"\n", args...)
-		},
+		Timeout:    time.Duration(budget.MaxDurationSeconds) * time.Second,
+		Logf:       logf,
+		OnFinished: hook(deliverer, (*deliver.Deliverer).Finished),
+		OnResolved: hook(deliverer, (*deliver.Deliverer).Resolved),
 	})
 	if err != nil {
 		return err
@@ -160,14 +181,25 @@ func serveCommand(args []string) error {
 	defer stop()
 	worker := make(chan error, 1)
 	go func() { worker <- server.Run(ctx) }()
+	delivery := make(chan error, 1)
+	if deliverer != nil {
+		go func() { delivery <- deliverer.Run(ctx) }()
+	} else {
+		delivery <- nil
+	}
 	listener := make(chan error, 1)
 	go func() { listener <- httpServer.ListenAndServe() }()
-	fmt.Printf("vora-probe serve: listening on %s, worker %s, reports in %s\n", listen, mode, outDir)
+	posting := "off"
+	if deliverer != nil {
+		posting = "to Slack " + cfg.Serve.Slack.Channel
+	}
+	fmt.Printf("vora-probe serve: listening on %s, worker %s, reports in %s, delivery %s\n", listen, mode, outDir, posting)
 
 	select {
 	case err := <-listener:
 		stop()
 		<-worker
+		<-delivery
 		return err
 	case <-ctx.Done():
 	}
@@ -179,6 +211,7 @@ func serveCommand(args []string) error {
 	defer cancel()
 	_ = httpServer.Shutdown(shutdownCtx)
 	<-worker
+	<-delivery
 	if queued := server.Queued(); len(queued) > 0 {
 		fmt.Fprintf(os.Stderr, "vora-probe serve: stopped with %d incidents queued; they resume on the next start: %v\n", len(queued), queued)
 	}
@@ -229,4 +262,12 @@ func investigator(cfg serveConfig, planner models.Planner, budget investigation.
 		})
 		return result.ReplayResult, err
 	}, "in a Vora sandbox", nil
+}
+
+// hook adapts a delivery method to a serve hook, or nil when delivery is off.
+func hook(d *deliver.Deliverer, method func(*deliver.Deliverer, string)) func(string) {
+	if d == nil {
+		return nil
+	}
+	return func(id string) { method(d, id) }
 }

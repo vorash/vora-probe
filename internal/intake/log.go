@@ -29,6 +29,7 @@ const (
 	changeHeartbeat     changeKind = "heartbeat"
 	changeUnmapped      changeKind = "unmapped"
 	changeInvestigation changeKind = "investigation"
+	changePost          changeKind = "post"
 )
 
 // change is one line of the log.
@@ -40,6 +41,7 @@ type change struct {
 	Delivery      *Delivery                    `json:"delivery,omitempty"`
 	Investigation *Investigation               `json:"investigation,omitempty"`
 	Status        investigation.IncidentStatus `json:"incident_status,omitempty"`
+	Post          *Post                        `json:"post,omitempty"`
 }
 
 // commit writes a change, when there is a log, and then applies it. The caller
@@ -113,6 +115,13 @@ func (in *Intake) apply(c change) error {
 		if c.Status != "" {
 			r.Incident.Status = c.Status
 		}
+	case changePost:
+		r, err := record()
+		if err != nil {
+			return err
+		}
+		post := *c.Post
+		r.Post = &post
 	default:
 		return fmt.Errorf("unknown change kind %q", c.Kind)
 	}
