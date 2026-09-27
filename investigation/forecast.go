@@ -22,9 +22,9 @@ import (
 const ForecastVersion = "forecast/v1"
 
 // ForecastPolicy holds the thresholds a series must meet before a forecast is
-// made. The defaults are provisional: they are to be set from the development
-// split of the lab scenarios and then frozen before the held-out split is
-// evaluated (vorash/vora-probe#14).
+// made. The defaults were set on the development split of the recorded lab
+// scenarios and frozen before the held-out split was scored
+// (vorash/vora-probe#14); TestTheForecastThresholdsAreFrozen pins them.
 type ForecastPolicy struct {
 	// MinSamples and MinSpan: a trend drawn through a handful of points, or
 	// through a few minutes, is noise.

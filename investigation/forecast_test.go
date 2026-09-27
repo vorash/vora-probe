@@ -242,3 +242,23 @@ func TestTheBandIsWhereTheConfidenceBandMeetsTheLimit(t *testing.T) {
 		t.Fatalf("band %s..%s must straddle the point estimate %s", f.Earliest, f.Latest, f.ETA)
 	}
 }
+
+// The thresholds were set on the development split of the recorded lab
+// scenarios (2026-09-27) and frozen before the held-out split was scored, as
+// #14 requires. On dev the provisional values already met every acceptance
+// criterion, so they were frozen unchanged rather than tuned to fit noise.
+// Changing any of them invalidates the published held-out result: re-score
+// held-out only after re-deriving them on dev, and say so.
+func TestTheForecastThresholdsAreFrozen(t *testing.T) {
+	want := investigation.ForecastPolicy{
+		MinSamples: 10,
+		MinSpan:    10 * time.Minute,
+		MinR2:      0.8,
+		ResetDrop:  0.5,
+		Spread:     2,
+		Horizon:    2 * time.Hour,
+	}
+	if got := investigation.DefaultForecastPolicy(); got != want {
+		t.Fatalf("the frozen forecast thresholds changed:\n got %+v\nwant %+v", got, want)
+	}
+}

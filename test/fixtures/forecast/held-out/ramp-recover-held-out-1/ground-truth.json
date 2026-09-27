@@ -1,0 +1,23 @@
+{
+  "schema_version": "probe/v1",
+  "case": "ramp-recover-held-out-1",
+  "scenario": "ramp-recover",
+  "family": "held-out",
+  "seed": 1,
+  "truth": "negative",
+  "params": {
+    "scenario": "ramp-recover",
+    "family": "held-out",
+    "seed": 1,
+    "truth": "negative",
+    "limit_mb": 256,
+    "base_mb": 71.8784837446804,
+    "slope_mb_per_min": 4.196188043779064,
+    "plateau_mb": 214.4327023379733,
+    "noise_mb": 1.9311712362645683
+  },
+  "killed_at": null,
+  "kill_reason": null,
+  "recorded_from": "2026-09-26T18:53:50Z",
+  "recorded_to": "2026-09-26T20:54:13Z"
+}

@@ -272,9 +272,10 @@ A refusal is a result, not an error. A forecast is refused when:
 The band is where the fit's confidence band, ŷ(t) ± k·s·√(1/n + (t−t̄)²/Sxx),
 meets the limit. The upper edge gives the earliest crossing and the lower edge
 the latest. It is a band of plausible crossings, never a probability. The
-thresholds in `ForecastPolicy` are provisional until the development split of
-the lab scenarios sets them, and they are frozen before the held-out split is
-evaluated.
+thresholds in `ForecastPolicy` were set on the development split of the
+recorded lab scenarios and frozen before the held-out split was scored. They
+met every acceptance criterion on dev unchanged, so they were frozen as they
+were. A test pins them, because changing one invalidates the held-out result.
 
 The forecast suite (`evaluate --suite forecast`) replays recorded lab scenarios
 (`test/fixtures/forecast/{dev,held-out}`) the way a watch loop will: every

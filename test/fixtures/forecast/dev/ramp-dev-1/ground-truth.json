@@ -1,0 +1,22 @@
+{
+  "schema_version": "probe/v1",
+  "case": "ramp-dev-1",
+  "scenario": "ramp",
+  "family": "dev",
+  "seed": 1,
+  "truth": "positive",
+  "params": {
+    "scenario": "ramp",
+    "family": "dev",
+    "seed": 1,
+    "truth": "positive",
+    "limit_mb": 256,
+    "base_mb": 41.878483744680395,
+    "slope_mb_per_min": 2.1307920291860425,
+    "noise_mb": 0.9311712362645682
+  },
+  "killed_at": "2026-09-26T11:49:15Z",
+  "kill_reason": "OOMKilled",
+  "recorded_from": "2026-09-26T10:10:59Z",
+  "recorded_to": "2026-09-26T11:49:15Z"
+}

@@ -1,0 +1,21 @@
+{
+  "schema_version": "probe/v1",
+  "case": "noisy-flat-held-out-1",
+  "scenario": "noisy-flat",
+  "family": "held-out",
+  "seed": 1,
+  "truth": "negative",
+  "params": {
+    "scenario": "noisy-flat",
+    "family": "held-out",
+    "seed": 1,
+    "truth": "negative",
+    "limit_mb": 256,
+    "base_mb": 71.8784837446804,
+    "noise_mb": 5.196188043779064
+  },
+  "killed_at": null,
+  "kill_reason": null,
+  "recorded_from": "2026-09-26T15:53:13Z",
+  "recorded_to": "2026-09-26T16:53:25Z"
+}
