@@ -1,0 +1,23 @@
+{
+  "schema_version": "probe/v1",
+  "case": "sawtooth-held-out-1",
+  "scenario": "sawtooth",
+  "family": "held-out",
+  "seed": 1,
+  "truth": "negative",
+  "params": {
+    "scenario": "sawtooth",
+    "family": "held-out",
+    "seed": 1,
+    "truth": "negative",
+    "limit_mb": 256,
+    "base_mb": 71.8784837446804,
+    "amplitude_mb": 41.96188043779064,
+    "period_min": 7.161040381539058,
+    "noise_mb": 1.9311712362645683
+  },
+  "killed_at": null,
+  "kill_reason": null,
+  "recorded_from": "2026-09-26T13:32:13Z",
+  "recorded_to": "2026-09-26T14:32:24Z"
+}

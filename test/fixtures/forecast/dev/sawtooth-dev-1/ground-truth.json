@@ -1,0 +1,23 @@
+{
+  "schema_version": "probe/v1",
+  "case": "sawtooth-dev-1",
+  "scenario": "sawtooth",
+  "family": "dev",
+  "seed": 1,
+  "truth": "negative",
+  "params": {
+    "scenario": "sawtooth",
+    "family": "dev",
+    "seed": 1,
+    "truth": "negative",
+    "limit_mb": 256,
+    "base_mb": 41.878483744680395,
+    "amplitude_mb": 21.307920291860427,
+    "period_min": 3.4406935876927047,
+    "noise_mb": 0.9311712362645682
+  },
+  "killed_at": null,
+  "kill_reason": null,
+  "recorded_from": "2026-09-26T12:32:00Z",
+  "recorded_to": "2026-09-26T13:32:11Z"
+}

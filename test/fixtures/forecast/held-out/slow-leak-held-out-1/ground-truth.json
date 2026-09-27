@@ -1,0 +1,22 @@
+{
+  "schema_version": "probe/v1",
+  "case": "slow-leak-held-out-1",
+  "scenario": "slow-leak",
+  "family": "held-out",
+  "seed": 1,
+  "truth": "positive",
+  "params": {
+    "scenario": "slow-leak",
+    "family": "held-out",
+    "seed": 1,
+    "truth": "positive",
+    "limit_mb": 256,
+    "base_mb": 71.8784837446804,
+    "slope_mb_per_min": 1.2196188043779064,
+    "noise_mb": 1.9311712362645683
+  },
+  "killed_at": "2026-09-26T23:18:42Z",
+  "kill_reason": "OOMKilled",
+  "recorded_from": "2026-09-26T20:54:14Z",
+  "recorded_to": "2026-09-26T23:18:42Z"
+}

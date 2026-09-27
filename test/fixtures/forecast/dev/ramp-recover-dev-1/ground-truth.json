@@ -1,0 +1,23 @@
+{
+  "schema_version": "probe/v1",
+  "case": "ramp-recover-dev-1",
+  "scenario": "ramp-recover",
+  "family": "dev",
+  "seed": 1,
+  "truth": "negative",
+  "params": {
+    "scenario": "ramp-recover",
+    "family": "dev",
+    "seed": 1,
+    "truth": "negative",
+    "limit_mb": 256,
+    "base_mb": 41.878483744680395,
+    "slope_mb_per_min": 2.1307920291860425,
+    "plateau_mb": 193.9527023379733,
+    "noise_mb": 0.9311712362645682
+  },
+  "killed_at": null,
+  "kill_reason": null,
+  "recorded_from": "2026-09-26T16:53:26Z",
+  "recorded_to": "2026-09-26T18:53:49Z"
+}
