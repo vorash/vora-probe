@@ -2,16 +2,16 @@
 
 Four frozen cases for the first end-to-end slice. Each directory holds:
 
-- `bundle.json` — everything the engine is allowed to see: the incident, the
+- `bundle.json` holds everything the engine is allowed to see: the incident, the
   recorded planner turns and the recorded infrastructure answers.
-- `ground-truth.json` — the hidden answer key. Only the evaluation harness loads
+- `ground-truth.json` is the hidden answer key. Only the evaluation harness loads
   it; nothing in the bundle references it.
 
 | Case | What it pins down |
 | --- | --- |
 | `oom-positive` | An evidenced memory-limit kill is identified, and a leak is refused because the sawtooth series does not evidence sustained growth. |
 | `misleading-deployment-correlation` | A rollout completes inside the proximity bound of the impact, with flat memory, no restarts and unchanged query volume. Proximity alone must not become causation. |
-| `missing-telemetry` | Restarts are evidenced and the terminating cause is not; the report must stay inconclusive and publish its coverage gaps. |
+| `missing-telemetry` | Restarts are evidenced and the terminating cause is not. The report must stay inconclusive and publish its coverage gaps. |
 | `non-oom-restart` | A probe-driven restart with memory far below the limit must not be reported as an out-of-memory incident. |
 
 ## Editing a bundle

@@ -1,7 +1,7 @@
 # Isolated lab (step 5)
 
-Operator-run lifecycle for the live OOM slice. Nothing here is applied by
-`vora-ansible`: their ceiling stays node_exporter, and the cluster is probe's
+Operator-run lifecycle for the live OOM slice. `vora-ansible` applies nothing
+here. Its ceiling stays node_exporter, and the cluster is probe's
 concern.
 
 The lab is one namespace, `probe-lab`, capped at 2 GiB of limits so a
@@ -12,10 +12,10 @@ runs the Vora runner.
 
 | Path | What it is |
 | --- | --- |
-| `00-namespace.yaml` | namespace, `ResourceQuota` (2 GiB limits / 1 GiB requests), `LimitRange` defaults |
+| `00-namespace.yaml` | namespace, `ResourceQuota` (2 GiB limits, 1 GiB requests), `LimitRange` defaults |
 | `10-rbac.yaml` | `probe-investigator` (read-only, namespaced) and the scrape identities |
 | `20-memory-test.yaml` | the workload and `unrelated-api`, the rollout for the misleading case |
-| `30-observability.yaml` | Prometheus (cAdvisor + app scrape) and kube-state-metrics |
+| `30-observability.yaml` | Prometheus (cAdvisor and app scrape) and kube-state-metrics |
 | `40-alerting.yaml` | Alertmanager; the alert rules live in `30-observability.yaml` |
 | `memory-test/` | the workload's source; its own Go module |
 | `build-image.sh` | build the workload image and import it into the node |
@@ -35,8 +35,8 @@ $K -n probe-lab rollout status deploy/prometheus
 $K -n probe-lab rollout status deploy/alertmanager
 ```
 
-Smoke test — one cAdvisor series and one app series, through the same ports the
-gateway will read:
+Run a smoke test that reads one cAdvisor series and one app series, through the
+same ports the gateway will read:
 
 ```bash
 $K -n probe-lab port-forward svc/prometheus 9090:9090 &
@@ -75,7 +75,7 @@ curl -s localhost:9093/api/v2/alerts | jq -r '.[].labels.alertname'   # Watchdog
 
 The namespace cap is 2 GiB and the workload plus Prometheus plus
 kube-state-metrics already use most of it. Grafana is a human convenience and
-the first thing to drop; the reports Probe produces are the artifact, not a
+the first thing to drop. The reports Probe produces are the artifact, not a
 dashboard.
 
 ## Why memory comes from cAdvisor
@@ -86,14 +86,13 @@ and no metrics API. Container memory and limits come from the kubelet's
 
 ## Scenarios
 
-Faults are injected by the operator with `inject.sh`, never by the
-investigator:
+The operator, never the investigator, injects faults with `inject.sh`:
 
 | Command | Shape |
 | --- | --- |
-| `inject.sh oom 512` | working set past the limit → `OOMKilled`, a sawtooth, not a leak |
-| `inject.sh ramp` | climbs to ~94% of the limit, holds so it is sampled, then pushes over → `OOMKilled` with corroborating memory evidence |
-| `inject.sh non-oom` | failed liveness probe → restarts that are not memory-driven |
+| `inject.sh oom 512` | the working set passes the limit and ends in `OOMKilled`, which gives a sawtooth, not a leak |
+| `inject.sh ramp` | climbs to ~94% of the limit, holds so it is sampled, then pushes over and ends in `OOMKilled` with corroborating memory evidence |
+| `inject.sh non-oom` | a failed liveness probe causes restarts that are not memory-driven |
 | `inject.sh rollout` | a real, unrelated deployment change near an impact |
 | `inject.sh drop-metric request_error_rate` | an application metric stops existing |
 | `inject.sh scenario <name> <seed> [dev\|held-out]` | a seeded forecast scenario (below) |
@@ -104,14 +103,14 @@ investigator:
 For foresight (#14), the workload follows a working-set shape drawn from a
 seed. The limit comes from the downward API, so the shape is drawn against the
 ceiling the container really has. The drawn parameters are logged at start as
-`scenario {…}`: that is the recording's ground truth. It goes to the pod log,
+`scenario {…}`. That line is the recording's ground truth. It goes to the pod log,
 which the investigator's role cannot read, and never to a queryable metric.
 
 | Scenario | Ground truth | Shape |
 | --- | --- | --- |
 | `ramp` | positive | steady climb past the limit, reached within 2h |
 | `slow-leak` | positive | slow climb, a long lead (1.5h to 6h, inside Prometheus' retention) |
-| `ramp-recover` | negative | climbs, then plateaus at 70–86% of the limit |
+| `ramp-recover` | negative | climbs, then plateaus at 70 to 86% of the limit |
 | `sawtooth` | negative | climbs and collects on a cycle, under 75% of the limit |
 | `step` | unforeseeable | flat, then past the limit in one step, no warning |
 | `noisy-flat` | negative | flat with jitter |
@@ -146,7 +145,7 @@ before the workload existed, and the gateway reports `unavailable`. That keeps
 ## Cleanup
 
 The Prometheus RBAC is cluster-scoped but binds a *namespaced* subject, so
-deleting the namespace is not enough — it would leave a dangling grant that a
+deleting the namespace is not enough. It would leave a dangling grant that a
 recreated `probe-lab/prometheus` ServiceAccount would inherit. Delete the
 binding and the role explicitly first:
 

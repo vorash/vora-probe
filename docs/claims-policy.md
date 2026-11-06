@@ -39,7 +39,7 @@ the most persuasive false signal in incident response. Two checks stop it: the
 impact onset is measured against the pre-rollout baseline rather than taken as
 the first sample of the window, and the claim must cite a mechanism that
 actually changed across the rollout. Citing a mechanism-shaped metric that stayed
-flat is not enough — `TestDeploymentRegressionRefusedWhenMechanismIsFlat` pins
+flat is not enough, and `TestDeploymentRegressionRefusedWhenMechanismIsFlat` pins
 that. The same holds for logs: a log observation is mechanism evidence only
 when its matches began after the rollout, or grew by the impact ratio. Error
 lines that were already there before it explain nothing

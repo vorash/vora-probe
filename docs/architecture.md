@@ -31,7 +31,7 @@ interpreted.
 
 Replay runs the worker in this process; the live controller (`internal/probe`)
 runs the same binary inside a Vora sandbox and drives it one step at a time over
-the public exec API. Both are the same port — `probe.StepRunner` — so the loop
+the public exec API. Both use the same port, `probe.StepRunner`, so the loop
 cannot tell where a step ran, and the offline suite is evidence about the
 protocol rather than about a mock.
 
@@ -52,12 +52,12 @@ The worker answers with:
 { "kind": "model_request" | "infra_request" | "final", "model_request": {}, "infra_request": {}, "report": {}, "envelope": {} }
 ```
 
-Two budgets, two transports. The **state envelope** is capped at 64 KiB and
+There are two budgets and two transports. The **state envelope** is capped at 64 KiB and
 travels in `state`; a single **tool response** may be up to 2 MiB and travels in
 `pending`. A response is normalized into a bounded observation before it is ever
 stored, so a large answer can never inflate the state. If even the reduced
 observation does not fit, the payload is dropped, the observation is marked
-`truncated`, and it becomes a coverage gap — oversize input is reported, never
+`truncated`, and it becomes a coverage gap. Oversize input is reported, never
 silently treated as complete.
 
 The engine fits the state 2 KiB under the cap, leaving room for the call record
@@ -72,7 +72,7 @@ transition, so without them the second observation of a run would be numbered
 
 ## Live controller leg
 
-The controller creates one sandbox per attempt — `NETWORK_NONE`, bounded
+The controller creates one sandbox per attempt, with `NETWORK_NONE`, bounded
 resources, and a TTL longer than the run's own wall-clock budget so the
 controller reaps it rather than a TTL expiring mid-step. Every step is a
 fixed-command exec with the bounded envelope on stdin and exactly one result line
@@ -83,8 +83,8 @@ and `run_finished`.
 Exit handling is the subtle part, and it is why the leg exists. protojson omits
 fields holding their default value, so a **successful** execution arrives as
 `{"exit":{"reason":"EXITED"}}` with no `exitCode` at all. An execution whose
-exit chunk never arrives is a different thing — the run was interrupted — and
-`probe.ErrInterrupted` makes the two impossible to conflate. Oversized, malformed
+exit chunk never arrives is a different thing, because the run was interrupted.
+`probe.ErrInterrupted` makes it impossible to confuse the two. Oversized, malformed
 or multi-line output is refused rather than trimmed into shape.
 
 The worker measures the wall-clock budget against `Run.Used.StartedAt` using its
@@ -100,7 +100,7 @@ cannot satisfy, so a distroless worker must run on the `bwrap` backend.
 
 `internal/intake` turns Alertmanager webhook notifications (payload version 4)
 into incidents. It decides what a notification means and never starts model
-work, so the receiver answers `202` at once; a receiver that blocked would make
+work, so the receiver answers `202` at once. A receiver that blocked would make
 Alertmanager time out and retry, and a retry is a duplicate.
 
 Every notification gets an outcome, including those that start nothing:
@@ -116,7 +116,7 @@ Every notification gets an outcome, including those that start nothing:
 
 Resolution is decided **before** dedupe. The dedupe key is
 `sha256(groupKey | status | first startsAt, or last endsAt when resolved)`, so a
-resolution never matches its firing key; deduping first would open an incident
+resolution never matches its firing key. Deduping first would open an incident
 for an alert that has already stopped.
 
 The incident is built from the group's earliest alert. Its symptom is the
@@ -152,7 +152,7 @@ token, a planner endpoint, a deadline, or positive rate limits. It listens on
 
 Intake's state is an append-only log, `<out>/incidents.jsonl` (0600, one
 writer, enforced by a lock). Every change is one typed line, synced before it
-is applied or acknowledged: a failed write answers `5xx`, which Alertmanager
+is applied or acknowledged. A failed write answers `5xx`, which Alertmanager
 retries, so nothing acknowledged is lost. On start the log is replayed through
 the same code live changes use, so dedupe keys and open groups survive a
 restart. A final line without its newline is a write that never finished and
@@ -198,8 +198,8 @@ code, and writes the label to the log once:
 
 With `serve.watch.shadow`, forecasts are recorded and labelled but not
 investigated or posted. That is the mode for a real deployment before anyone
-should be paged by a forecast, and it builds the labelled history there is
-none of. The labels are visible in `GET /incidents`.
+should be paged by a forecast, and it builds the labelled history that does
+not exist yet. The labels are visible in `GET /incidents`.
 
 In chat, a forecast lives in one thread. The report is labelled `forecast ·`.
 Each material revision is a reply with the new conditional statement, posted
@@ -318,8 +318,8 @@ enforces, so the provider cannot produce a reply that is missing a field or
 names something outside the allowlist. A field an action kind does not use is
 `null`. On OpenRouter the request also sets `provider.require_parameters`,
 because OpenRouter otherwise silently drops a parameter a provider does not
-support. The engine still validates every reply: the schema narrows what can
-arrive, it does not replace the contract.
+support. The engine still validates every reply. The schema narrows what can
+arrive, but it does not replace the contract.
 
 A second planner endpoint (`VORA_PROBE_MODEL_FALLBACK_*`, with its own timeout)
 is tried when the first fails: a transport error, a timeout, a non-2xx status,
@@ -349,10 +349,10 @@ mode the incident runs again as its next attempt when the server restarts.
 
 ## Incident classes
 
-An alert maps to a class (`investigation.Classes`); `ContainerRestartLoop` and
+An alert maps to a class (`investigation.Classes`). `ContainerRestartLoop` and
 `KubePodCrashLooping` are `crashloop`, and `ContainerOOMKilled` is `oom`.
 Intake records the class on the incident. The planner is told the class's
-competing hypotheses and the evidence to collect first, as guidance: it still
+competing hypotheses and the evidence to collect first, as guidance. It still
 proposes what it judges, and the claims policy is the same for every class. A
 class never makes a conclusion admissible.
 
@@ -417,11 +417,11 @@ reaches Loki.
 Three independent checks, so withdrawing a permission never requires trusting a
 model or editing a prompt:
 
-1. `gateway.Action.Validate` — structural: the action kind is in the allowlist,
+1. `gateway.Action.Validate` is structural: the action kind is in the allowlist,
    the metric is in the allowlist, the window is well formed and bounded.
-2. `gateway.Policy.Authorize` — situational: an explicit deny list and an entity
+2. `gateway.Policy.Authorize` is situational: an explicit deny list and an entity
    scope applied on top of the allowlist.
-3. `investigation.ClaimPolicy` — epistemic: what may be *asserted* about the
+3. `investigation.ClaimPolicy` is epistemic: what may be *asserted* about the
    evidence. See `docs/claims-policy.md`.
 
 A refusal at layer 1 or 2 fails the run and is recorded as an escalation. A
@@ -452,14 +452,14 @@ Ground truth never enters the planner or the evaluator. It lives in
 
 ## Persistence
 
-- `journal.jsonl` — append-only, one event per line, sequence numbers assigned by
-  the writer and continued on reopen. Requests are journaled *before* execution
+- `journal.jsonl` is append-only, with one event per line and sequence numbers
+  that the writer assigns and continues on reopen. Requests are journaled *before* execution
   and results before the next step, so an interrupted run reads as an unanswered
   request rather than as a success. A torn final line is tolerated on reopen,
   because that is exactly what an interruption leaves behind. A live run also
   records `sandbox` created/destroyed events, which correlate the run with the
   sandbox it ran in.
-- `report.json`, `report.md` — the report in machine and human form, written
+- `report.json` and `report.md` are the report in machine and human form, written
   for every run, including one that did not conclude. When the config names
   `lab.prometheus_ui_url`, each metric observation in the report links to the
   Prometheus graph of its exact query, window and resolution. The controller
@@ -477,7 +477,7 @@ Ground truth never enters the planner or the evaluator. It lives in
 Three arms can label evidence: the deterministic rules, a baseline LLM, and Jev.
 They implement one interface (`investigation.RelationEvaluator`) answering one
 question: *how does this body of evidence bear on this hypothesis?* Everything
-else is held constant — the planner and its recorded turns, the evidence (through
+else is held constant: the planner and its recorded turns, the evidence (through
 the same normalization the loop uses), the label definitions, and the claims
 policy that runs afterwards and cannot be overridden by an arm.
 
@@ -490,7 +490,7 @@ prompts.
 Two properties are enforced on every arm:
 
 - **Full coverage.** An arm must label every observation it was given, exactly
-  once. A partial answer is an invalid response, not a partial result; a model
+  once. A partial answer is an invalid response, not a partial result. A model
   that quietly drops the inconvenient evidence is the failure this repository
   exists to prevent.
 - **No substitution.** An arm whose endpoint is missing is *blocked*. It is
@@ -498,7 +498,7 @@ Two properties are enforced on every arm:
   would report a result for an experiment that never ran.
 
 Model calls are charged to the model-call budget, and only calls marked remote
-are charged — the deterministic arm answers from rules and must not be priced as
+are charged. The deterministic arm answers from rules and must not be priced as
 if it called a model. Evidence is labelled incrementally and a hypothesis revised
 by the planner has its labels dropped, so a model arm's call count is a property
 of the arm rather than of how often the loop happens to reassess. The
@@ -523,14 +523,14 @@ Endpoints are run configuration, never build-time constants:
 | `VORA_PROBE_JEV_BASE_URL`, `VORA_PROBE_JEV_API_KEY`, `VORA_PROBE_JEV_MODEL` | Jev arm (`POST {base}/v1/systemone`) |
 
 With none set, the run still produces a comparison: the deterministic arm
-answers, the model arms are reported as blocked. With one set, the other is still
+answers and the model arms are reported as blocked. With one set, the other is still
 reported as blocked. This is the intended offline behaviour, not a degraded mode.
 
 The fixed-input suite lives in `test/fixtures/relations/`, split into `dev` and
-`held-out`. The splits must be disjoint — `LoadSplits` refuses otherwise — because
+`held-out`. The splits must be disjoint, and `LoadSplits` refuses otherwise, because
 a "held-out" case that also appears in development measures memorisation. Each
 case carries a `rationale`, which is the claim that its expected label is
-correct; if the rules cannot agree with a case's rationale, the case is wrong
+correct. If the rules cannot agree with a case's rationale, the case is wrong
 rather than the arm, and the acceptance test says so.
 
 A case is a *body* of evidence with one designated `target`, because real
@@ -549,7 +549,7 @@ Signals are counted separately because they are different failures:
 | Signal | Meaning |
 | --- | --- |
 | agreement | the arm's label matched the case's expected label |
-| unsupported supports | the arm asserted `supports` where the case expects anything else — an unfounded causal claim, worse than declining to decide |
+| unsupported supports | the arm asserted `supports` where the case expects anything else. That is an unfounded causal claim, worse than declining to decide |
 | insufficient-context accuracy | of the cases that should be declined, how many were declined rather than guessed |
 | unsafe recommendation | (whole loop) an arm produced a recommendation on a case whose cause the ground truth says is not established |
 | traceability failures | (whole loop) a finding was published without citing evidence |
@@ -563,9 +563,9 @@ arm's confidence can override the claims policy.
 Cost is reported only when a price is known, and only for arms that actually
 called a model. A guessed price next to exact counts is worse than no price.
 
-Jev is not required to win. If the deterministic rules beat both model arms — as
-they do on the current authored suite, which the rules were written against —
-that is the result, and the held-out split is there to say how much of it
+Jev is not required to win. If the deterministic rules beat both model arms, as
+they do on the current authored suite, which the rules were written against,
+that is the result. The held-out split is there to say how much of it
 survives being written against.
 
 ## Limits
@@ -585,7 +585,7 @@ qualitative and falsifiable:
 Step 3 adds the baseline-LLM and Jev evidence-relation arms. When it does, the
 comparison is of counts and variances over three runs per variant, not of
 statistical significance, and confidence scores are never presented as the
-probability that a root cause is correct. Jev is not required to win; a
+probability that a root cause is correct. Jev is not required to win. A
 comparison that shows it does not help is a result.
 
 ## Public surface
@@ -600,8 +600,8 @@ The layout is a contract, not a convenience:
 
 `test/layout` enforces both halves: a library package outside `internal/` may not
 import `internal/`, and the list of expected public packages is pinned so renaming
-one fails the build rather than someone else's. Command packages are exempt —
-nobody imports a `main`, and the CLI legitimately drives the internals.
+one fails the build rather than someone else's. Command packages are exempt.
+Nobody imports a `main`, and the CLI legitimately drives the internals.
 
 The fixture *loader* is public while the fixture *data* stays under
 `test/fixtures/`: consumers pass an explicit path, and `fixtures.Root()` is an
