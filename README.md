@@ -24,12 +24,12 @@ network and no live infrastructure are required.
 
 Steps 1 and 2 are implemented and run entirely offline:
 
-- **Step 1** — domain records, the claims policy, `calc/v1` derivations and four
+- **Step 1.** Domain records, the claims policy, `calc/v1` derivations and four
   frozen OOM fixtures with hidden ground truth. See `docs/claims-policy.md`.
-- **Step 2** — the bounded step protocol, an append-only journal, the fixture
+- **Step 2.** The bounded step protocol, an append-only journal, the fixture
   gateway, the recorded planner, and evidence-linked JSON and Markdown reports.
   See `docs/architecture.md`.
-- **Step 3** — three evidence-relation arms (deterministic rules, an
+- **Step 3.** Three evidence-relation arms (deterministic rules, an
   OpenAI-compatible baseline, and Jev) behind one port, a fixed-input
   classification suite with development and held-out splits, and a comparison
   report of counts and spreads. Arms without a configured endpoint are reported
@@ -43,7 +43,7 @@ Alertmanager webhooks and investigates each new incident, one at a time, under
 rate limits and a per-run deadline. See `docs/architecture.md`.
 
 `vora-probe ask --config lab.json --service checkout-api "why does it restart?"`
-is an investigation with a question for its incident. It is not a chat: it
+is an investigation with a question for its incident. It is not a chat. It
 runs the same bounded loop, allowlist and claims policy as an alert over the
 last `--since` (at most 1h), prints the report, and exits non-zero when the run
 does not conclude.
@@ -85,8 +85,8 @@ a breaking change will be a minor bump while the module is pre-1.0.
 
 Tagged releases also carry prebuilt `linux/amd64` and `linux/arm64` archives for
 `vora-probe` and `vora-probe-worker`, with a `checksums.txt`, plus the worker
-image on `ghcr.io/vorash/vora-probe-worker`. Reference the image **by digest**;
-the release notes print it.
+image on `ghcr.io/vorash/vora-probe-worker`. Reference the image **by digest**.
+The release notes print it.
 
 ## Try it
 
@@ -103,7 +103,7 @@ protocol, gateway and report path as a live run, with recorded answers in place 
 a network. No credentials, no cluster and no model endpoint are involved.
 
 Once the Vora CLI grows plugin dispatch (vorash/vora#37), the same entry point is
-`vora probe replay …`; the binary stays standalone so it also works where the
+`vora probe replay …`. The binary stays standalone so it also works where the
 `vora` CLI is not installed.
 
 ## What it refuses
@@ -116,11 +116,11 @@ overclaim:
 | --- | --- |
 | `oom-positive` | An evidenced memory-limit kill is identified, and a leak is refused because the sawtooth series does not show sustained growth. |
 | `misleading-deployment-correlation` | A rollout inside the proximity bound with flat memory and unchanged query volume ends inconclusive. Proximity is not causation. |
-| `missing-telemetry` | Restarts are evidenced and the terminating cause is not; the report stays inconclusive and publishes its coverage gaps. |
+| `missing-telemetry` | Restarts are evidenced and the terminating cause is not. The report stays inconclusive and publishes its coverage gaps. |
 | `non-oom-restart` | A probe-driven restart with memory far below the limit is never reported as an out-of-memory incident. |
-| `crashloop/liveness-restart` | The kubelet kills the container over failing liveness probes (exit 137, reason `Error`); that is a probe restart, and a SIGKILL is not read as a memory kill. |
-| `crashloop/application-crash` | The container exits with code 1 by itself and no probe fails; the crash is established and a probe restart is refused. |
-| `crashloop/misleading-rollout` | A rollout lands two minutes before latency jumps, but the crashes began before it and query volume is flat: the crash is the finding, and the rollout is refused. |
+| `crashloop/liveness-restart` | The kubelet kills the container over failing liveness probes (exit 137, reason `Error`). That is a probe restart, and a SIGKILL is not read as a memory kill. |
+| `crashloop/application-crash` | The container exits with code 1 by itself and no probe fails. The crash is established and a probe restart is refused. |
+| `crashloop/misleading-rollout` | A rollout lands two minutes before latency jumps, but the crashes began before it and query volume is flat. The crash is the finding, and the rollout is refused. |
 | `crashloop/ambiguous-exit-and-probe` | An application exit beside a failing liveness probe is ambiguous both ways, so the case ends inconclusive rather than picking one. |
 
 ## Development
@@ -134,10 +134,10 @@ make evaluate   # the evaluator comparison
 
 ## Documentation
 
-- `docs/architecture.md` — trust boundary, step protocol, the evaluator port, limits and how to read a comparison.
-- `docs/claims-policy.md` — what Probe may assert, and the evidence each assertion needs.
-- `test/fixtures/oom/README.md` — the fixture format and how to re-freeze a change.
+- `docs/architecture.md` covers the trust boundary, the step protocol, the evaluator port, limits and how to read a comparison.
+- `docs/claims-policy.md` says what Probe may assert, and the evidence each assertion needs.
+- `test/fixtures/oom/README.md` describes the fixture format and how to re-freeze a change.
 
 ## Licence
 
-MIT — see `LICENSE`.
+MIT. See `LICENSE`.

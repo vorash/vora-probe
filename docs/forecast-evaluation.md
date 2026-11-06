@@ -27,8 +27,8 @@ no statistical claims: each split has one seed per scenario.
 
 | Case | Truth | Forecast | Outcome |
 | --- | --- | --- | --- |
-| `ramp-dev-1` | positive | opened 10:21:14, ETA 1h25m45s (1h21m31s–1h30m24s) | killed 1h28m01s later, **inside** the band, realized |
-| `slow-leak-dev-1` | positive | opened 01:34:28, ETA 2h00m00s (1h57m10s–2h02m59s) | killed 1h57m30s later, **inside** the band |
+| `ramp-dev-1` | positive | opened 10:21:14, ETA 1h25m45s (1h21m31s to 1h30m24s) | killed 1h28m01s later, **inside** the band, realized |
+| `slow-leak-dev-1` | positive | opened 01:34:28, ETA 2h00m00s (1h57m10s to 2h02m59s) | killed 1h57m30s later, **inside** the band |
 | `step-dev-1` | unforeseeable | none | no lead time claimed |
 | `ramp-recover-dev-1` | negative | opened 17:03:41, predicted crossing 18:33:25 | **withdrawn 18:20:41**, before the predicted crossing |
 | `sawtooth-dev-1` | negative | none | silent |
@@ -42,8 +42,8 @@ claims on unforeseeable 0. **Every criterion is met.**
 
 | Case | Truth | Forecast | Outcome |
 | --- | --- | --- | --- |
-| `ramp-held-out-1` | positive | opened 12:00:34, ETA 26m28s (22m22s–31m58s) | killed 31m21s later, **inside** the band |
-| `slow-leak-held-out-1` | positive | opened 21:04:29, ETA 1h49m58s (1h37m54s–2h05m14s); **opened 3 times, withdrawn twice** | killed 2h14m13s later, **9 min after the band's latest edge** |
+| `ramp-held-out-1` | positive | opened 12:00:34, ETA 26m28s (22m22s to 31m58s) | killed 31m21s later, **inside** the band |
+| `slow-leak-held-out-1` | positive | opened 21:04:29, ETA 1h49m58s (1h37m54s to 2h05m14s); **opened 3 times, withdrawn twice** | killed 2h14m13s later, **9 min after the band's latest edge** |
 | `step-held-out-1` | unforeseeable | none | no lead time claimed |
 | `ramp-recover-held-out-1` | negative | opened 19:04:05, predicted crossing 19:35:16 | **withdrawn 19:43:05, 7m49s after** the predicted crossing |
 | `sawtooth-held-out-1` | negative | **opened 13:42:28**, ETA 26m43s | withdrawn 4 min later |
